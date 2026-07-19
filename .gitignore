@@ -1,0 +1,29 @@
+# Data — vocabulary downloads and built indices
+data/
+*.duckdb
+*.lance/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
