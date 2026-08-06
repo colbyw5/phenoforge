@@ -74,12 +74,35 @@ miss, escalate on low confidence, interrupt for human confirmation.
 
 ### D1 — Vocabulary source: OHDSI Athena
 
-Athena bulk download (`CONCEPT`, `CONCEPT_ANCESTOR`, `CONCEPT_RELATIONSHIP`).
+Athena bulk download. Load `CONCEPT` and `CONCEPT_RELATIONSHIP`. **Do not load
+`CONCEPT_ANCESTOR`** — it does not cover ICD-10-CM (see findings).
 
-*Rationale:* the only option giving a real transitive hierarchy offline. `CONCEPT_ANCESTOR` is
-precomputed transitive closure — descendant expansion becomes a single query rather than a
-recursive walk. NLM APIs are rate-limited (5–20 req/s) and cannot support bulk expansion or
-embedding index construction.
+*Rationale:* NLM APIs are rate-limited (5–20 req/s) and cannot support bulk expansion or
+embedding index construction. Athena is also the only path to OHDSI Phenotype Library
+resolution (see D4).
+
+**Findings — resolved against the actual download (v2026 vocabularies):**
+
+| Query | Result | Consequence |
+|-------|--------|-------------|
+| ICD-10-CM rows in `CONCEPT_ANCESTOR` | **0** | Precomputed closure is unavailable for this vocabulary. Do not load the table. |
+| ICD-10-CM ↔ ICD-10-CM in `CONCEPT_RELATIONSHIP` | **290,572 `Is a`** (and inverse `Subsumes`) | A full internal hierarchy exists as direct parent/child edges. |
+| ICD-10-CM concepts reachable from SNOMED via `Mapped from` | **98,059** (~complete) | OHDSI PL → SNOMED → ICD-10-CM resolution is viable. D4 holds. |
+
+**Expansion mechanism:** recursive CTE over `Is a` edges within `vocabulary_id='ICD10CM'`, not a
+join against `CONCEPT_ANCESTOR`, and not prefix matching on the code string. This uses OMOP's
+actual modeled hierarchy rather than string structure, which is the stronger choice. 290k edges
+is trivial in DuckDB.
+
+*Traversal caution:* `Is a` and `Subsumes` are inverse relations (identical counts). Traverse a
+single direction — descendants follow `Subsumes` from the parent (equivalently, `Is a`
+reversed). The recursive CTE requires a visited-set guard to prevent cycles regardless.
+
+The prefix-matching fallback considered earlier is unnecessary and is dropped.
+
+*Verified traversal (E11.21):* `Is a` from `E11.21` returns `E11.2` (Type 2 diabetes with
+kidney complications) and `E11` (Type 2 diabetes mellitus) — a correct, semantically ordered
+parent chain. This is the expected shape; a loader test should assert it.
 
 ### D2 — Storage: embedded, no server
 
@@ -106,19 +129,67 @@ Reserve schema space for value constraints and temporal windows. Do not implemen
 *Rationale:* OHDSI PL is publicly accessible on GitHub, version-controlled with a DOI per
 version, OMOP CDM conformant, and openly peer-reviewed. Its metadata records literature review
 and PheValuator operating characteristics, which feeds `explain_inclusion` directly. Because
-definitions reference OMOP concept IDs, they join against Athena with no mapping layer.
+definitions reference OMOP concept IDs, they join against Athena.
+
+**Cost, accepted:** OHDSI PL definitions are written against *standard* concepts, which for
+conditions means SNOMED. Resolving them back to ICD-10-CM requires the SNOMED↔ICD-10-CM
+mapping, which means Athena stays on the critical path and users must bring their own download.
+This is standard practice in OHDSI tooling. It costs the `pip install`-and-go adoption story;
+say so plainly in the README rather than papering over it.
 
 VSAC is the authoritative source for CMS eCQM value sets but requires a UMLS license and API
 key, and all its code systems fall under the UMLS Metathesaurus License Agreement. It therefore
 **cannot be bundled** — it becomes an optional user-supplied-key path, which usefully
 demonstrates auth handling without licensing risk.
 
-Tuva value sets are a candidate second bundled source pending a license check on seed artifacts.
-
 *Caveats:* OHDSI PL entries are full cohort definitions including temporal logic; extract the
 concept-set portion rather than using them wholesale. Coverage is hundreds of phenotypes, not
 VSAC's thousands — acceptable, and arguably better as eval ground truth. **Verify the LICENSE
 file before redistributing anything.**
+
+**Resolution mechanics (verified against v2026):** SNOMED → ICD-10-CM via `Mapped from` fans
+out one-to-many — min 1, median 2, **max 3,029**. Two consequences:
+
+- The resolved mapping is many-to-many. `ConceptSet` holds a list of ICD-10-CM codes per source
+  concept, never a scalar. Model the mapping as a join table.
+- **Fan-out guard, required.** The 3,029 tail is structural, not clinical — a few high-level
+  SNOMED groupers map to thousands of ICD-10-CM codes across unrelated chapters. Unguarded
+  resolution of such a concept silently destroys value-set specificity. Cap or flag any single
+  SNOMED concept resolving to more than ~50–100 ICD-10-CM codes (tunable); surface it for review
+  rather than expanding blindly. This is the same instinct as the over-inclusion penalty and the
+  CCSR-spread heuristic (D10), applied at the resolution stage — a post-resolution set spanning
+  many unrelated CCSR categories is the symptom this prevents.
+
+#### Rejected: AHRQ CCSR as curated ground truth
+
+CCSR was evaluated as a fully redistributable, ICD-10-CM-native, SNOMED-free alternative. It
+does not work, and the reason is instructive.
+
+Profiling `DXCCSR_v2026-1` (75,725 codes → 496 default inpatient categories, median 33 codes
+per category):
+
+- All 95 `E11*` codes collapse into two categories: `END003` (with complication, 93 codes) and
+  `END002` (without complication, 2 codes)
+- `END003` also contains `E08`, `E09`, `E10`, and `E13` — **type 1 and type 2 diabetes are
+  indistinguishable**
+- All three diabetic nephropathy codes land in `END003` alongside every other complication
+
+The motivating example on the README front page — "adults with type 2 diabetes and diabetic
+nephropathy" — is not representable. Neither is "type 2 but not type 1."
+
+The largest categories reveal the design intent: `XXX000 Unacceptable PDX` (10,843 codes),
+`INJ073 Injury, sequela` (7,654). CCSR is a **reporting grouper** for summarizing hospital
+discharges, not a phenotype library. Both produce "groups of ICD-10-CM codes"; only one encodes
+clinical intent.
+
+CCSR is still loaded, as a feature rather than ground truth — see D10.
+
+Tuva value sets remain a candidate supplement pending per-value-set license review. Their
+terminology sets derive from NCHS/CDC and are public domain, but the **quality measure value
+sets draw on CPT (AMA-licensed) and SNOMED**, so redistributability must be checked per set,
+not wholesale. Avoid APR-DRG entirely (Solventum/3M licensed). CMS Chronic Conditions Data
+Warehouse (75 conditions, ICD-10-CM native, public domain) is the most promising bundled
+supplement.
 
 ### D5 — Transport: stdio for v1, flag-controlled
 
@@ -147,6 +218,45 @@ allow swapping.
 Dense (paraphrase), BM25 (exact strings, code fragments, rare literal terms), graph traversal
 (hierarchy expansion). Each covers a distinct failure mode; publish the ablation.
 
+### D9 — SNOMED: use locally, never redistribute
+
+An earlier version of this document said "SNOMED is out of scope," which conflated two
+different things and blocked a legitimate design.
+
+- **Use** — loading SNOMED locally from a user's own Athena download, to resolve OHDSI PL
+  concept IDs or build mappings. Permitted under the terms accepted at download.
+- **Redistribution** — shipping SNOMED content in a package, or serving it from a public
+  endpoint. Not permitted.
+
+Operating rule: **load everything locally, expose and ship only ICD-10-CM.** SNOMED is never a
+user-facing vocabulary, never a tool surface, never in a released artifact.
+
+*Open question:* whether an embedding index or mapping table *derived* from SNOMED
+relationships constitutes a derivative work. Unresolved — do not build anything that depends
+on the answer.
+
+### D10 — CCSR: retrieval and validation feature, not ground truth
+
+Rejected as curated ground truth (see D4). Loaded anyway, because it provides a clinical
+grouping over ICD-10-CM that the billing hierarchy does not, and it is fully redistributable.
+
+Three uses:
+
+- **Reranking prior.** Semantic search returns candidates; shared CCSR category is a cheap
+  clinical signal for reranking.
+- **Over-inclusion detector.** A generated set spanning many unrelated CCSR categories is
+  almost certainly wrong. Feeds the over-inclusion penalty in the evaluation layer.
+- **Coarse graph layer.** Gives the graph component of hybrid retrieval a clinical grouping
+  that is orthogonal to prefix structure, which is exactly why it adds signal.
+
+*Parsing gotchas for the loader:*
+
+- **Mixed quoting.** Codes are single-quoted (`'A000'`), descriptions double-quoted. Standard
+  CSV readers with `ignore_errors` silently drop ~86% of rows. Parse with `quotechar='"'`,
+  then strip single quotes per field. Verify the row count is ~75,725, not ~10,854.
+- **Many-to-many.** 8,958 codes carry more than one CCSR category. Model it as a join table,
+  not a column on the concept.
+
 ## Evaluation
 
 Standard recall@k is wrong for this task. Retrieving `E11.21` when the target is `E11.9` is a
@@ -165,7 +275,8 @@ which is usually what kills solo evaluation projects.
 
 ## Explicitly out of scope
 
-- SNOMED CT (licensing; requires self-hosted Snowstorm)
+- SNOMED CT as a *user-facing vocabulary or shipped artifact* (see D9 — local use is permitted
+  and required for D4)
 - General PubMed search (exists, undifferentiated, does not improve value sets)
 - Multimodal / imaging
 - Temporal cohort logic in v1 (schema space reserved only)
@@ -173,6 +284,10 @@ which is usually what kills solo evaluation projects.
 
 ## Open questions
 
+- Does `CONCEPT_ANCESTOR` cover ICD-10-CM, or is prefix matching the expansion mechanism? (D1)
+- What fraction of OHDSI PL concept sets resolve cleanly back to ICD-10-CM via `Mapped from`?
+  If coverage is poor, D4 needs rethinking again.
 - Exact extraction path for concept sets from OHDSI PL cohort JSON
-- Whether Tuva seed artifacts are redistributable
+- Whether a derived index built from SNOMED relationships is a derivative work (D9)
+- Which Tuva value sets are free of CPT and SNOMED and therefore bundleable
 - Confidence threshold for escalating a `generated` set to human confirmation
