@@ -27,3 +27,7 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Local agent/tool state
+.claude/
+.serena/
