@@ -11,6 +11,7 @@ Claude Desktop and other MCP clients expect today with no hosting step.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
@@ -23,8 +24,25 @@ from phenoforge.engine.retrieval import BM25Retriever
 
 mcp = FastMCP("phenoforge")
 
+_db_path: Path = DEFAULT_VOCAB_DB_PATH
 _con: duckdb.DuckDBPyConnection | None = None
 _retriever: BM25Retriever | None = None
+
+
+def configure(db_path: Path) -> None:
+    """Point the server at a different vocabulary database.
+
+    Resets any already-open connection and cached retriever so the next
+    tool call rebuilds them against the new path. Intended for tests; the
+    console entry point never needs to call this.
+
+    :param db_path: Path to a DuckDB database built by
+        ``scripts/load_vocab.py``.
+    """
+    global _db_path, _con, _retriever
+    _db_path = db_path
+    _con = None
+    _retriever = None
 
 
 def _get_connection() -> duckdb.DuckDBPyConnection:
@@ -35,7 +53,7 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     """
     global _con
     if _con is None:
-        _con = connect(DEFAULT_VOCAB_DB_PATH)
+        _con = connect(_db_path)
     return _con
 
 

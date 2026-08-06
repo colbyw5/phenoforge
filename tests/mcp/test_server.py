@@ -18,24 +18,9 @@ from tests.scripts.conftest import MiniVocab
 
 @pytest.fixture(autouse=True)
 def _use_mini_vocab(mini_vocab: MiniVocab) -> Iterator[None]:
-    server._con = None
-    server._retriever = None
-    import phenoforge.engine.db as db_module
-
-    original = db_module.connect
-
-    def fake_connect(_path: object = None) -> object:
-        return original(mini_vocab.db_path)
-
-    db_module.connect = fake_connect  # type: ignore[assignment]
-    server.connect = fake_connect  # type: ignore[assignment]
-    try:
-        yield
-    finally:
-        db_module.connect = original
-        server.connect = original
-        server._con = None
-        server._retriever = None
+    server.configure(mini_vocab.db_path)
+    yield
+    server.configure(server.DEFAULT_VOCAB_DB_PATH)
 
 
 def test_lookup_concept_tool(mini_vocab: MiniVocab) -> None:
