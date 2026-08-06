@@ -9,12 +9,21 @@ built yet — see Roadmap.
 
 ## Setup
 
-Requires your own [OHDSI Athena](https://athena.ohdsi.org/) bulk download (free account,
-unzipped locally) — this cannot be bundled. See DESIGN.md D4 for why.
+Requires your own [OHDSI Athena](https://athena.ohdsi.org/) bulk download — vocabulary content
+carries its own license terms, so it can't be bundled with this repo.
+
+1. Create a free account at [athena.ohdsi.org](https://athena.ohdsi.org/).
+2. Under Search, select at least **ICD10CM** and **SNOMED** as vocabularies, then click
+   Download. SNOMED is used locally only — to resolve future curated-set matching — and is
+   never shipped or exposed through any tool surface.
+3. Unzip the download into `data/athena/` (this directory is gitignored — nothing under `data/`
+   is ever committed or shipped). It contains OMOP CDM vocabulary tables (`CONCEPT.csv`,
+   `CONCEPT_RELATIONSHIP.csv`, etc.) — Athena ships vocabulary content pre-shaped as OMOP, so no
+   separate mapping step is needed.
 
 ```bash
 uv sync
-python scripts/load_vocab.py path/to/unzipped/athena --output data/vocab.duckdb
+python scripts/load_vocab.py data/athena --output data/vocab.duckdb
 phenoforge-mcp  # stdio MCP server; add to Claude Desktop's mcpServers config to try it
 ```
 
@@ -39,8 +48,6 @@ US ICD-10-CM, which the existing servers do not, and uses semantic retrieval rat
 proxied keyword search, which fails when a population description and a code description share
 no vocabulary.
 
-See [DESIGN.md](./DESIGN.md) for the full rationale.
-
 ## Architecture
 
 Three layers — a retrieval engine, a thin MCP server, and a LangGraph agent. The MCP server
@@ -58,8 +65,7 @@ and the agent are independent consumers of the same engine.
 - [ ] **v0.7 — LangGraph agent.** Tiered trust routing, HITL confirmation gate
 - [ ] **v1.0 — packaging.** PyPI, docs, validation and limitations section
 
-Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains,
-temporal cohort logic, hosted HTTP transport.
+Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains
 
 ## Tools
 
@@ -77,7 +83,8 @@ cohort definition. Nothing produces `curated` provenance yet.
 
 ## License
 
-Apache 2.0. Vocabulary content carries its own terms — see `DESIGN.md`.
+Apache 2.0. Vocabulary content (ICD-10-CM, SNOMED) carries its own license terms from OHDSI/
+Athena, separate from this repo's license — nothing from `data/` is redistributed.
 
 ## Not a clinical decision tool
 

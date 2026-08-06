@@ -4,8 +4,9 @@ Tool registration only — no business logic (AGENTS.md). Every tool here
 delegates directly to a ``phenoforge.engine`` function; if a change requires
 new logic rather than a new call, it belongs in ``engine``, not here.
 
-Transport is flag-controlled (DESIGN.md D5): stdio by default, matching what
-Claude Desktop and other MCP clients expect today with no hosting step.
+Transport is flag-controlled: stdio by default, matching what Claude Desktop
+and other MCP clients expect today with no hosting step, but switching to
+HTTP later only requires a different --transport value, not a rewrite.
 """
 
 from __future__ import annotations
@@ -138,7 +139,7 @@ def main() -> None:
         "--transport",
         choices=["stdio", "sse", "streamable-http"],
         default="stdio",
-        help="MCP transport (DESIGN.md D5: stdio for v1, HTTP is a flag not a rewrite).",
+        help="MCP transport. stdio for clients like Claude Desktop; HTTP is a flag, not a rewrite.",
     )
     args = parser.parse_args()
     mcp.run(transport=args.transport)

@@ -1,11 +1,12 @@
 """Hierarchy (descendant) expansion over ``CONCEPT_RELATIONSHIP`` ``Is a`` edges.
 
-DESIGN.md D1: ``CONCEPT_ANCESTOR`` has zero ICD-10-CM coverage, so expansion
-walks direct ``Is a``/``Subsumes`` edges via a recursive CTE instead of a
-precomputed closure. The real Athena download contains redundant direct
-edges (e.g. a code's grandparent is also a direct parent) — not cycles, but
-multiple paths to the same concept — so the CTE carries a visited-path guard
-and the result is deduplicated to each concept's shortest depth.
+OMOP's precomputed transitive-closure table, ``CONCEPT_ANCESTOR``, has zero
+rows for ICD-10-CM, so expansion instead walks direct ``Is a``/``Subsumes``
+edges via a recursive CTE. The real Athena download contains redundant
+direct edges (e.g. a code's grandparent is also a direct parent) — not
+cycles, but multiple paths to the same concept — so the CTE carries a
+visited-path guard and the result is deduplicated to each concept's
+shortest depth.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ def expand_descendants(
     A descendant of ``concept_id_2`` is any concept ``concept_id_1`` with an
     ``Is a`` edge to it (direct or transitive) — i.e. traversal follows
     ``Is a`` edges backwards from the seed, equivalently ``Subsumes`` forward
-    from it (DESIGN.md D1).
+    from it.
 
     :param con: Open connection to ``vocab.duckdb``.
     :param seed_code: ICD-10-CM code to expand from, e.g. ``"E11"``.

@@ -1,8 +1,9 @@
 """BM25 lexical retrieval over ICD-10-CM concept names.
 
-One component of the hybrid retrieval design (DESIGN.md D8). Dense
-(paraphrase) and graph-traversal components are not yet implemented; this
-covers exact strings, code fragments, and rare literal terms today.
+One of three planned retrieval components — dense embeddings (paraphrase
+matching) and graph traversal (hierarchy expansion, see ``expansion.py``)
+are the other two. BM25 covers exact strings, code fragments, and rare
+literal terms; it does not match paraphrase or clinical synonymy.
 """
 
 from __future__ import annotations

@@ -13,8 +13,7 @@ def lookup_by_code(con: duckdb.DuckDBPyConnection, concept_code: str) -> Concept
     """Look up a single ICD-10-CM concept by its code.
 
     Only ICD-10-CM is queryable here: SNOMED is loaded locally for future
-    curated-set resolution but is never a user-facing lookup target
-    (DESIGN.md D9).
+    curated-set resolution but is never a user-facing lookup target.
 
     :param con: Open connection to ``vocab.duckdb``.
     :param concept_code: ICD-10-CM code, e.g. ``"E11.21"``.

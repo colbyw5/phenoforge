@@ -102,11 +102,12 @@ def mini_vocab(tmp_path: Path) -> Iterator[MiniVocab]:
     """Build a ~200-concept miniature vocabulary and load it with the real loader.
 
     Layout: an ICD-10-CM diabetes hierarchy (``E11`` -> ``E11.2`` ->
-    ``E11.21``, verified traversal shape per DESIGN.md D1) plus ~190 filler
-    ICD-10-CM leaf concepts scattered across unrelated chapters, a handful of
-    SNOMED concepts with ``Mapped from``/``Maps to`` edges into ICD-10-CM
-    (including one deliberately high-fanout concept to exercise the D4
-    guard), and a small CCSR category file.
+    ``E11.21``, matching the shape verified against the real Athena
+    download) plus ~190 filler ICD-10-CM leaf concepts scattered across
+    unrelated chapters, a handful of SNOMED concepts with ``Mapped
+    from``/``Maps to`` edges into ICD-10-CM (including one deliberately
+    high-fanout concept to exercise the fan-out guard), and a small CCSR
+    category file.
 
     :param tmp_path: pytest-provided temporary directory.
     :yields: :class:`MiniVocab` with the built database path and known ids.

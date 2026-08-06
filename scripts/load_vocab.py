@@ -1,13 +1,13 @@
 """Build ``data/vocab.duckdb`` from an unzipped OHDSI Athena download.
 
 Loads ``CONCEPT`` and ``CONCEPT_RELATIONSHIP``, filtered to ICD-10-CM (the
-shipped, user-facing vocabulary) and SNOMED (loaded for local use only, per
-DESIGN.md D9 — never exposed through the engine or MCP surface, used solely
-for the future OHDSI Phenotype Library resolution path, DESIGN.md D4).
-Optionally loads an AHRQ CCSR category file (DESIGN.md D10).
+shipped, user-facing vocabulary) and SNOMED (loaded for local use only —
+never exposed through the engine or MCP surface, used solely for the future
+OHDSI Phenotype Library resolution path). Optionally loads an AHRQ CCSR
+category file.
 
 ``CONCEPT_ANCESTOR`` is deliberately not loaded: it has zero ICD-10-CM
-coverage (DESIGN.md D1). Descendant expansion instead walks
+coverage in the Athena download. Descendant expansion instead walks
 ``CONCEPT_RELATIONSHIP`` ``Is a`` / ``Subsumes`` edges via a recursive CTE at
 query time.
 """
@@ -72,7 +72,7 @@ class LoadReport(BaseModel):
     :ivar high_fanout_snomed_concepts: SNOMED ``concept_id`` values whose
         ``Mapped from`` fan-out into ICD-10-CM exceeds the configured
         threshold. Flagged, not dropped — resolution-time consumers decide
-        what to do with them (DESIGN.md D4).
+        what to do with them.
     """
 
     concept_counts: dict[str, int] = Field(default_factory=dict)
@@ -169,7 +169,9 @@ def _read_ccsr_rows(ccsr_csv: Path) -> list[dict[str, str]]:
     Codes are single-quoted (``'A000'``), descriptions double-quoted.
     ``csv.reader`` with ``quotechar='"'`` handles the double-quoted fields
     correctly; the surviving single quotes on code-like fields are stripped
-    per field. See DESIGN.md D10.
+    per field. A standard CSV reader run with ``ignore_errors`` silently
+    drops most rows on this file — this parsing approach is required, not
+    a stylistic choice.
 
     :param ccsr_csv: Path to the CCSR category CSV.
     :returns: One dict per data row, keyed by header name.
@@ -226,8 +228,9 @@ def _find_high_fanout_snomed_concepts(
 ) -> list[int]:
     """Flag SNOMED concepts whose ``Mapped from`` fan-out into ICD-10-CM is excessive.
 
-    DESIGN.md D4: fan-out is 1..3029 across the full download; anything past
-    the threshold is structural (a high-level grouper), not clinical
+    Verified against the v2026 download: fan-out ranges 1..3029, with a
+    median of 2. The high tail is structural (a high-level SNOMED grouper
+    mapping to thousands of unrelated ICD-10-CM codes), not clinical
     specificity, and should be surfaced for review rather than expanded
     blindly at resolution time.
 
@@ -268,7 +271,7 @@ def build_vocab_db(
     :param db_path: Output path for the DuckDB database. Overwritten if it
         already exists.
     :param fanout_threshold: SNOMED-to-ICD-10-CM ``Mapped from`` fan-out above
-        this count is flagged in the returned report (DESIGN.md D4).
+        this count is flagged in the returned report.
     :returns: Summary of what was loaded.
     :rtype: LoadReport
     :raises FileNotFoundError: If ``CONCEPT.csv`` or ``CONCEPT_RELATIONSHIP.csv``
