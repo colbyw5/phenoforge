@@ -141,15 +141,26 @@ class DenseRetriever:
             always needed, even when opening a prebuilt table, to embed
             query text at search time.
         :param index_path: Path to a persisted LanceDB directory built by
-            ``scripts/build_index.py``. If missing or not given, an
-            ephemeral in-memory index is built instead.
+            ``scripts/build_index.py``. If missing, not given, or present
+            but unreadable (interrupted or corrupt ``build_index.py`` run),
+            an ephemeral in-memory index is built instead.
         """
         self._embed_fn = embed_fn or default_embedder()
+        self._table = None
 
         if index_path is not None and index_path.exists():
-            db = lancedb.connect(str(index_path))
-            self._table = db.open_table(_TABLE_NAME)
-        else:
+            try:
+                db = lancedb.connect(str(index_path))
+                self._table = db.open_table(_TABLE_NAME)
+            except Exception:
+                # LanceDB doesn't document a specific exception type for a
+                # missing/corrupt table (observed: ValueError today), and
+                # this boundary is exactly where an interrupted build_index.py
+                # run would surface — fall back rather than propagate, same
+                # as the "no index built yet" case below.
+                self._table = None
+
+        if self._table is None:
             db = lancedb.connect(tempfile.mkdtemp())
             records = _embed_concept_rows(con, self._embed_fn)
             self._table = db.create_table(_TABLE_NAME, data=records)

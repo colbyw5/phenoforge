@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import duckdb
 
 from phenoforge.engine.dense import DenseRetriever
@@ -50,6 +52,22 @@ def test_search_normalizes_an_unnormalized_embedder(con: duckdb.DuckDBPyConnecti
 
     retriever = DenseRetriever(con, embed_fn=unnormalized_embed_fn)
     results, unmappable = retriever.search("diabetic nephropathy")
+    assert unmappable is None
+    codes = [c.concept_code for c in results]
+    assert "E11.21" in codes
+
+
+def test_falls_back_to_in_memory_index_when_table_missing(
+    con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """An index_path directory that exists but has no valid table (e.g. an
+    interrupted build_index.py run) must fall back gracefully, not raise."""
+    empty_index_dir = tmp_path / "concept_index.lance"
+    empty_index_dir.mkdir()
+
+    retriever = DenseRetriever(con, embed_fn=fake_embed_fn, index_path=empty_index_dir)
+    results, unmappable = retriever.search("diabetic nephropathy")
+
     assert unmappable is None
     codes = [c.concept_code for c in results]
     assert "E11.21" in codes
