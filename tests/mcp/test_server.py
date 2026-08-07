@@ -8,17 +8,29 @@ right engine function and shape the result as documented in AGENTS.md
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
+from pathlib import Path
 
+import duckdb
 import pytest
 
 import phenoforge.mcp.server as server
+from phenoforge.engine.models import ProvenanceTier
 from tests.scripts.conftest import MiniVocab
 
 
 @pytest.fixture(autouse=True)
-def _use_mini_vocab(mini_vocab: MiniVocab) -> Iterator[None]:
-    server.configure(mini_vocab.db_path)
+def _use_mini_vocab(mini_vocab: MiniVocab, tmp_path: Path) -> Iterator[None]:
+    # Explicit nonexistent library_dir/index_path rather than relying on the
+    # untouched defaults (data/phenotype_library, data/concept_index.lance)
+    # not existing on disk — both are real, populated directories in any
+    # checkout where the optional setup steps have been run.
+    server.configure(
+        mini_vocab.db_path,
+        library_dir=tmp_path / "no_such_library",
+        index_path=tmp_path / "no_such_index.lance",
+    )
     yield
     server.configure(server.DEFAULT_VOCAB_DB_PATH)
 
@@ -46,3 +58,85 @@ def test_search_concepts_tool_unmappable(mini_vocab: MiniVocab) -> None:
     result = server.search_concepts("xyzzy plugh quux")
     assert result.concepts == []
     assert len(result.unmappable) == 1
+
+
+def test_find_curated_definition_no_library_configured(mini_vocab: MiniVocab) -> None:
+    result = server.find_curated_definition("type 2 diabetes")
+
+    assert result.concepts == []
+    assert len(result.unmappable) == 1
+    assert "fetch_phenotype_library" in result.unmappable[0].reason
+
+
+def test_find_curated_definition_tool(mini_vocab: MiniVocab, tmp_path: Path) -> None:
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(
+        json.dumps({"1": "Diabetic nephropathy demo cohort"})
+    )
+    (library_dir / "1.json").write_text(
+        json.dumps(
+            {
+                "ConceptSets": [
+                    {
+                        "id": 0,
+                        "name": "test",
+                        "expression": {
+                            "items": [
+                                {
+                                    "concept": {
+                                        "CONCEPT_ID": mini_vocab.sn_normal_id,
+                                        "CONCEPT_CODE": "90721000",
+                                        "VOCABULARY_ID": "SNOMED",
+                                        "CONCEPT_NAME": "irrelevant",
+                                        "DOMAIN_ID": "Condition",
+                                    },
+                                    "isExcluded": False,
+                                    "includeDescendants": False,
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    server.configure(mini_vocab.db_path, library_dir=library_dir)
+
+    result = server.find_curated_definition("diabetic nephropathy demo")
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].concept_code == "E11.21"
+    assert result.concepts[0].tier is ProvenanceTier.CURATED
+
+
+def test_find_curated_definition_no_match(mini_vocab: MiniVocab, tmp_path: Path) -> None:
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
+    server.configure(mini_vocab.db_path, library_dir=library_dir)
+
+    result = server.find_curated_definition("xyzzy plugh quux")
+
+    assert result.concepts == []
+    assert len(result.unmappable) == 1
+
+
+def test_search_concepts_fused_with_dense_index(mini_vocab: MiniVocab, tmp_path: Path) -> None:
+    from scripts.build_index import build_dense_index
+    from tests.engine.fake_embedder import fake_embed_fn
+
+    con = duckdb.connect(str(mini_vocab.db_path), read_only=True)
+    try:
+        index_path = tmp_path / "concept_index.lance"
+        build_dense_index(con, index_path, embed_fn=fake_embed_fn)
+    finally:
+        con.close()
+
+    server.configure(mini_vocab.db_path, index_path=index_path, dense_embed_fn=fake_embed_fn)
+
+    result = server.search_concepts("diabetic nephropathy", k=5)
+    codes = {c.concept_code for c in result.concepts}
+    assert "E11.21" in codes
+    sources = {c.source.split(":", 1)[0] for c in result.concepts}
+    assert sources & {"bm25", "dense"}
