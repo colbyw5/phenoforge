@@ -10,7 +10,6 @@ silently expand into thousands of unrelated ICD-10-CM codes.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import duckdb
@@ -22,14 +21,11 @@ from phenoforge.engine.models import (
     ProvenanceTier,
     UnmappableTerm,
 )
+from phenoforge.engine.retrieval import _tokenize
 
 _ICD10CM = "ICD10CM"
 _SNOMED = "SNOMED"
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _tokenize(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text.lower())
+_REQUIRED_CONCEPT_KEYS = ("CONCEPT_ID", "CONCEPT_CODE", "VOCABULARY_ID")
 
 
 def find_high_fanout_snomed_concepts(
@@ -100,16 +96,26 @@ def load_cohort_concept_items(cohort_json_path: Path) -> list[CuratedCohortConce
     (``PrimaryCriteria``, ``InclusionRules``, etc.), which is out of scope
     and not read here.
 
+    Items missing ``concept`` or any of its required fields are skipped
+    rather than raising — this file is fetched from an external source
+    (``scripts/fetch_phenotype_library.py``) with no schema guarantee, and a
+    single malformed item should degrade gracefully, not crash the whole
+    lookup.
+
     :param cohort_json_path: Path to one cohort's JSON file.
     :returns: Flattened concept-set items across all of the cohort's concept
-        sets.
+        sets. Malformed items are silently omitted.
     :rtype: list[CuratedCohortConceptItem]
     """
     data = json.loads(cohort_json_path.read_text())
     items: list[CuratedCohortConceptItem] = []
     for concept_set in data.get("ConceptSets", []):
         for item in concept_set.get("expression", {}).get("items", []):
-            concept = item["concept"]
+            concept = item.get("concept")
+            if not isinstance(concept, dict):
+                continue
+            if any(key not in concept for key in _REQUIRED_CONCEPT_KEYS):
+                continue
             items.append(
                 CuratedCohortConceptItem(
                     concept_id=concept["CONCEPT_ID"],
@@ -156,14 +162,16 @@ def resolve_curated_concepts(
     :param cohort_name: The cohort's display name, used in provenance.
     :param items: Concept-set items from :func:`load_cohort_concept_items`.
     :param fanout_threshold: Passed through to :func:`find_high_fanout_snomed_concepts`.
-    :returns: Resolved ICD-10-CM concepts tagged ``curated``, and unmappable
-        items with their reasons.
+    :returns: Resolved ICD-10-CM concepts tagged ``curated``, deduplicated by
+        ``concept_id`` (two cohort items can map to the same code), and
+        unmappable items with their reasons.
     :rtype: tuple[list[ConceptWithProvenance], list[UnmappableTerm]]
     """
     high_fanout = set(find_high_fanout_snomed_concepts(con, fanout_threshold))
     source = f"ohdsi_pl:{cohort_id}:{cohort_name}"
 
     resolved: list[ConceptWithProvenance] = []
+    seen_concept_ids: set[int] = set()
     unmappable: list[UnmappableTerm] = []
 
     for item in items:
@@ -211,6 +219,9 @@ def resolve_curated_concepts(
             continue
 
         for row in rows:
+            if row[0] in seen_concept_ids:
+                continue
+            seen_concept_ids.add(row[0])
             resolved.append(
                 ConceptWithProvenance(
                     concept_id=row[0],
@@ -265,18 +276,27 @@ def find_matching_cohort(query: str, manifest: dict[str, str]) -> str | None:
     :param query: Free-text population description.
     :param manifest: Cohort id -> display name, as loaded from ``manifest.json``.
     :returns: The cohort id with the most overlapping tokens, or ``None`` if
-        no cohort shares any token with the query.
+        no cohort shares any token with the query, or if more than one
+        cohort ties for the best score. A tie is deliberately not broken by
+        picking one: a ``curated`` match claims to be safe to use as-is, and
+        guessing between equally-scored cohorts would misrepresent an
+        ambiguous match as an authoritative one.
     :rtype: str | None
     """
     query_tokens = set(_tokenize(query))
     if not query_tokens:
         return None
 
-    best_id: str | None = None
+    best_ids: list[str] = []
     best_overlap = 0
     for cohort_id, name in manifest.items():
         overlap = len(query_tokens & set(_tokenize(name)))
         if overlap > best_overlap:
             best_overlap = overlap
-            best_id = cohort_id
-    return best_id
+            best_ids = [cohort_id]
+        elif overlap == best_overlap and overlap > 0:
+            best_ids.append(cohort_id)
+
+    if len(best_ids) != 1:
+        return None
+    return best_ids[0]

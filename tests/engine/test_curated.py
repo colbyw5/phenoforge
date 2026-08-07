@@ -138,10 +138,41 @@ def test_resolve_curated_concepts_skips_non_snomed(
     assert "unsupported source vocabulary RxNorm" in unmappable[0].reason
 
 
+def test_load_cohort_concept_items_skips_malformed_items(tmp_path: Path) -> None:
+    good = _circe_item(90721000, "90721000")
+    missing_concept = {"isExcluded": False, "includeDescendants": False}
+    missing_field = {
+        "concept": {"CONCEPT_ID": 1, "CONCEPT_CODE": "X", "DOMAIN_ID": "Condition"},
+        "isExcluded": False,
+        "includeDescendants": False,
+    }
+    path = tmp_path / "cohort.json"
+    path.write_text(json.dumps(_circe_json([good, missing_concept, missing_field])))
+
+    items = load_cohort_concept_items(path)
+
+    assert len(items) == 1
+    assert items[0].concept_code == "90721000"
+
+
+def test_resolve_curated_concepts_dedupes_by_concept_id(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection
+) -> None:
+    item = CuratedCohortConceptItem(
+        concept_id=mini_vocab.sn_normal_id,
+        concept_code="90721000",
+        vocabulary_id="SNOMED",
+        is_excluded=False,
+        include_descendants=False,
+    )
+    resolved, unmappable = resolve_curated_concepts(con, "1", "test cohort", [item, item])
+    assert unmappable == []
+    assert len(resolved) == 1
+
+
 def test_load_curated_concept_set(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-
     library_dir = tmp_path / "phenotype_library"
     library_dir.mkdir()
     (library_dir / "manifest.json").write_text(json.dumps({"1": "Diabetic nephropathy demo"}))
@@ -172,6 +203,14 @@ def test_find_matching_cohort_no_overlap_returns_none() -> None:
 def test_find_matching_cohort_empty_query_returns_none() -> None:
     manifest = {"1": "Type 2 diabetes mellitus"}
     assert find_matching_cohort("", manifest) is None
+
+
+def test_find_matching_cohort_tie_returns_none() -> None:
+    manifest = {
+        "40": "Diabetes Mellitus Type 2 or history of diabetes",
+        "503": "Type 2 diabetes mellitus",
+    }
+    assert find_matching_cohort("type 2 diabetes", manifest) is None
 
 
 def test_resolve_curated_concepts_no_mapping_found(
