@@ -21,6 +21,8 @@ import duckdb
 import typer
 from pydantic import BaseModel, Field
 
+from phenoforge.engine.curated import find_high_fanout_snomed_concepts
+
 app = typer.Typer(add_completion=False)
 
 _ICD10CM = "ICD10CM"
@@ -223,43 +225,6 @@ def _load_ccsr(con: duckdb.DuckDBPyConnection, ccsr_csv: Path) -> int:
     return len(rows)
 
 
-def _find_high_fanout_snomed_concepts(
-    con: duckdb.DuckDBPyConnection, fanout_threshold: int
-) -> list[int]:
-    """Flag SNOMED concepts whose ``Mapped from`` fan-out into ICD-10-CM is excessive.
-
-    Verified against the v2026 download: fan-out ranges 1..3029, with a
-    median of 2. The high tail is structural (a high-level SNOMED grouper
-    mapping to thousands of unrelated ICD-10-CM codes), not clinical
-    specificity, and should be surfaced for review rather than expanded
-    blindly at resolution time.
-
-    :param con: Open connection with ``concept`` and ``concept_relationship`` loaded.
-    :param fanout_threshold: Concepts mapping to more than this many
-        ICD-10-CM codes are flagged.
-    :returns: SNOMED ``concept_id`` values exceeding the threshold.
-    :rtype: list[int]
-    """
-    # For relationship_id='Mapped from', concept_id_1 is the SNOMED concept
-    # and concept_id_2 is the ICD-10-CM concept it was mapped from (verified
-    # against the v2026 download — the docs' "SNOMED -> ICD10CM" framing
-    # describes the mapping direction, not the column order).
-    rows = con.execute(
-        """
-        SELECT r.concept_id_1 AS snomed_concept_id, COUNT(*) AS n
-        FROM concept_relationship r
-        JOIN concept sn ON sn.concept_id = r.concept_id_1 AND sn.vocabulary_id = ?
-        JOIN concept icd ON icd.concept_id = r.concept_id_2 AND icd.vocabulary_id = ?
-        WHERE r.relationship_id = 'Mapped from'
-        GROUP BY r.concept_id_1
-        HAVING COUNT(*) > ?
-        ORDER BY n DESC
-        """,
-        [_SNOMED, _ICD10CM, fanout_threshold],
-    ).fetchall()
-    return [int(row[0]) for row in rows]
-
-
 def build_vocab_db(
     paths: VocabPaths,
     db_path: Path,
@@ -306,7 +271,7 @@ def build_vocab_db(
         if paths.ccsr_csv is not None:
             ccsr_rows = _load_ccsr(con, paths.ccsr_csv)
 
-        high_fanout = _find_high_fanout_snomed_concepts(con, fanout_threshold)
+        high_fanout = find_high_fanout_snomed_concepts(con, fanout_threshold)
 
         return LoadReport(
             concept_counts=concept_counts,

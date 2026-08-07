@@ -85,6 +85,9 @@ class MiniVocab:
     :ivar e11_id: ``concept_id`` for E11 (Type 2 diabetes mellitus).
     :ivar e11_2_id: ``concept_id`` for E11.2 (with kidney complications).
     :ivar e11_21_id: ``concept_id`` for E11.21 (diabetic nephropathy).
+    :ivar sn_normal_id: SNOMED ``concept_id`` (code ``90721000``, "Diabetic
+        nephropathy (disorder)") with a normal 1:1 ``Mapped from`` edge to
+        E11.21.
     :ivar high_fanout_snomed_id: SNOMED ``concept_id`` engineered to exceed
         the default fan-out threshold.
     """
@@ -94,6 +97,7 @@ class MiniVocab:
     e11_id: int
     e11_2_id: int
     e11_21_id: int
+    sn_normal_id: int
     high_fanout_snomed_id: int
 
 
@@ -195,6 +199,7 @@ def mini_vocab(tmp_path: Path) -> Iterator[MiniVocab]:
         e11_id=e11_id,
         e11_2_id=e11_2_id,
         e11_21_id=e11_21_id,
+        sn_normal_id=sn_normal_id,
         high_fanout_snomed_id=high_fanout_snomed_id,
     )
 
