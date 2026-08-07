@@ -1,12 +1,18 @@
 """Fuse ranked concept lists from multiple retrieval components.
 
-Pure function, no DB or network dependency — used to combine BM25
-(retrieval.py) and dense (dense.py) results into a single ranked list.
+``reciprocal_rank_fusion`` is a pure function, no DB or network dependency.
+``hybrid_search`` is the orchestration layer on top of it — deciding
+whether to query a dense retriever at all and building the fallback
+``unmappable`` entry — which belongs here rather than in the MCP transport
+per AGENTS.md's thin-server rule (``mcp/`` is tool registration only, no
+business logic).
 """
 
 from __future__ import annotations
 
-from phenoforge.engine.models import ConceptWithProvenance
+from phenoforge.engine.dense import DenseRetriever
+from phenoforge.engine.models import ConceptWithProvenance, UnmappableTerm
+from phenoforge.engine.retrieval import BM25Retriever
 
 _DEFAULT_RRF_K = 60
 
@@ -53,3 +59,38 @@ def reciprocal_rank_fusion(
 
     ranked_ids = sorted(scores, key=lambda cid: scores[cid], reverse=True)
     return [best_instance[cid][1] for cid in ranked_ids[:k]]
+
+
+def hybrid_search(
+    bm25: BM25Retriever,
+    dense: DenseRetriever | None,
+    query: str,
+    k: int = 10,
+) -> tuple[list[ConceptWithProvenance], UnmappableTerm | None]:
+    """Search using BM25 and, if available, dense retrieval, fused by RRF.
+
+    ``dense`` is optional so a caller (the MCP server) can pass ``None``
+    when no dense index has been built yet, degrading to BM25-only rather
+    than requiring one. Same return contract as
+    :meth:`~phenoforge.engine.retrieval.BM25Retriever.search` and
+    :meth:`~phenoforge.engine.dense.DenseRetriever.search`.
+
+    :param bm25: A built BM25 retriever.
+    :param dense: A built dense retriever, or ``None`` to search lexically only.
+    :param query: Free-text search string.
+    :param k: Maximum number of results to return.
+    :returns: A tuple of (fused, deduplicated results ordered by combined
+        relevance; an :class:`~phenoforge.engine.models.UnmappableTerm` if
+        nothing matched, else ``None``).
+    :rtype: tuple[list[ConceptWithProvenance], UnmappableTerm | None]
+    """
+    bm25_results, bm25_unmappable = bm25.search(query, k=k)
+    if dense is not None:
+        dense_results, _ = dense.search(query, k=k)
+        fused = reciprocal_rank_fusion([bm25_results, dense_results], k=k)
+    else:
+        fused = bm25_results
+
+    if not fused:
+        return [], bm25_unmappable or UnmappableTerm(term=query, reason="no match above threshold")
+    return fused, None

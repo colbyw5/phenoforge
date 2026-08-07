@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
@@ -22,7 +23,7 @@ from phenoforge.engine.curated import find_matching_cohort, load_curated_concept
 from phenoforge.engine.db import DEFAULT_VOCAB_DB_PATH, connect
 from phenoforge.engine.dense import DenseRetriever, EmbedFn
 from phenoforge.engine.expansion import expand_descendants
-from phenoforge.engine.hybrid import reciprocal_rank_fusion
+from phenoforge.engine.hybrid import hybrid_search
 from phenoforge.engine.lookup import lookup_by_code
 from phenoforge.engine.models import Concept, ConceptSet, UnmappableTerm
 from phenoforge.engine.retrieval import BM25Retriever
@@ -31,6 +32,10 @@ mcp = FastMCP("phenoforge")
 
 _DEFAULT_LIBRARY_DIR = Path("data/phenotype_library")
 _DEFAULT_INDEX_PATH = Path("data/concept_index.lance")
+
+# Sentinel distinguishing "not passed" (leave unchanged) from an explicit
+# None (reset to the module default) in configure()'s keyword args below.
+_UNSET: Any = object()
 
 _db_path: Path = DEFAULT_VOCAB_DB_PATH
 _library_dir: Path = _DEFAULT_LIBRARY_DIR
@@ -44,9 +49,9 @@ _dense_retriever: DenseRetriever | None = None
 def configure(
     db_path: Path,
     *,
-    library_dir: Path | None = None,
-    index_path: Path | None = None,
-    dense_embed_fn: EmbedFn | None = None,
+    library_dir: Path | None = _UNSET,
+    index_path: Path | None = _UNSET,
+    dense_embed_fn: EmbedFn | None = _UNSET,
 ) -> None:
     """Point the server at a different vocabulary database, phenotype library, and/or dense index.
 
@@ -57,15 +62,15 @@ def configure(
     :param db_path: Path to a DuckDB database built by
         ``scripts/load_vocab.py``.
     :param library_dir: Path to a directory of fetched cohort JSON files
-        built by ``scripts/fetch_phenotype_library.py``. Left unchanged if
-        not given.
+        built by ``scripts/fetch_phenotype_library.py``. Omit to leave
+        unchanged; pass ``None`` explicitly to reset to the module default.
     :param index_path: Path to a LanceDB index built by
-        ``scripts/build_index.py``. Left unchanged if not given.
+        ``scripts/build_index.py``. Omit to leave unchanged; pass ``None``
+        explicitly to reset to the module default.
     :param dense_embed_fn: Embedding function for the dense retriever.
-        Tests pass a fake embedder here so they never download BioLORD-2023;
-        left unchanged if not given (production leaves this ``None``, which
-        makes :class:`~phenoforge.engine.dense.DenseRetriever` default to
-        the real model).
+        Tests pass a fake embedder here so they never download BioLORD-2023.
+        Omit to leave unchanged; pass ``None`` explicitly to reset to the
+        real default embedder.
     """
     global _db_path, _library_dir, _index_path, _dense_embed_fn
     global _con, _retriever, _dense_retriever
@@ -73,11 +78,11 @@ def configure(
     _con = None
     _retriever = None
     _dense_retriever = None
-    if library_dir is not None:
-        _library_dir = library_dir
-    if index_path is not None:
-        _index_path = index_path
-    if dense_embed_fn is not None:
+    if library_dir is not _UNSET:
+        _library_dir = library_dir if library_dir is not None else _DEFAULT_LIBRARY_DIR
+    if index_path is not _UNSET:
+        _index_path = index_path if index_path is not None else _DEFAULT_INDEX_PATH
+    if dense_embed_fn is not _UNSET:
         _dense_embed_fn = dense_embed_fn
 
 
@@ -178,20 +183,8 @@ def search_concepts(query: str, k: int = 10) -> ConceptSet:
         nothing matches, ``concepts`` is empty and ``unmappable`` explains why.
     :rtype: ConceptSet
     """
-    bm25_results, bm25_unmappable = _get_retriever().search(query, k=k)
-    dense_retriever = _get_dense_retriever()
-    if dense_retriever is not None:
-        dense_results, _ = dense_retriever.search(query, k=k)
-        fused = reciprocal_rank_fusion([bm25_results, dense_results], k=k)
-    else:
-        fused = bm25_results
-
-    if not fused:
-        unmappable = bm25_unmappable or UnmappableTerm(
-            term=query, reason="no match above threshold"
-        )
-        return ConceptSet(unmappable=[unmappable])
-    return ConceptSet(concepts=fused)
+    results, unmappable = hybrid_search(_get_retriever(), _get_dense_retriever(), query, k=k)
+    return ConceptSet(concepts=results, unmappable=[unmappable] if unmappable else [])
 
 
 @mcp.tool()
@@ -234,7 +227,22 @@ def find_curated_definition(query: str) -> ConceptSet:
         return ConceptSet(
             unmappable=[UnmappableTerm(term=query, reason="no bundled cohort matches this query")]
         )
-    return load_curated_concept_set(_get_connection(), cohort_id, _library_dir)
+    try:
+        return load_curated_concept_set(_get_connection(), cohort_id, _library_dir)
+    except FileNotFoundError:
+        # manifest.json references a cohort_id whose JSON file is missing
+        # (stale manifest entry, partial/interrupted fetch, manual edit).
+        return ConceptSet(
+            unmappable=[
+                UnmappableTerm(
+                    term=query,
+                    reason=(
+                        f"cohort {cohort_id} is listed in the manifest but its JSON file is "
+                        "missing — re-run scripts/fetch_phenotype_library.py"
+                    ),
+                )
+            ]
+        )
 
 
 def main() -> None:

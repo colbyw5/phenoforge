@@ -122,6 +122,42 @@ def test_find_curated_definition_no_match(mini_vocab: MiniVocab, tmp_path: Path)
     assert len(result.unmappable) == 1
 
 
+def test_find_curated_definition_stale_manifest_entry(
+    mini_vocab: MiniVocab, tmp_path: Path
+) -> None:
+    """manifest.json lists a cohort whose JSON file is missing (stale entry,
+    partial fetch) — this must degrade to unmappable, not crash."""
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
+    # deliberately no "1.json" written
+    server.configure(mini_vocab.db_path, library_dir=library_dir)
+
+    result = server.find_curated_definition("type 2 diabetes mellitus")
+
+    assert result.concepts == []
+    assert len(result.unmappable) == 1
+    assert "fetch_phenotype_library" in result.unmappable[0].reason
+
+
+def test_configure_explicit_none_resets_to_default(mini_vocab: MiniVocab, tmp_path: Path) -> None:
+    from tests.engine.fake_embedder import fake_embed_fn
+
+    server.configure(mini_vocab.db_path, dense_embed_fn=fake_embed_fn)
+    assert server._dense_embed_fn is fake_embed_fn
+
+    server.configure(mini_vocab.db_path, dense_embed_fn=None)
+    assert server._dense_embed_fn is None
+
+
+def test_configure_omitted_leaves_unchanged(mini_vocab: MiniVocab) -> None:
+    from tests.engine.fake_embedder import fake_embed_fn
+
+    server.configure(mini_vocab.db_path, dense_embed_fn=fake_embed_fn)
+    server.configure(mini_vocab.db_path)  # dense_embed_fn omitted
+    assert server._dense_embed_fn is fake_embed_fn
+
+
 def test_search_concepts_fused_with_dense_index(mini_vocab: MiniVocab, tmp_path: Path) -> None:
     from scripts.build_index import build_dense_index
     from tests.engine.fake_embedder import fake_embed_fn
