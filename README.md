@@ -4,8 +4,9 @@
 
 **Status: early prototype.** The vocabulary loader, hierarchy expansion, hybrid (BM25 + dense)
 search, curated OHDSI Phenotype Library matching, an eval harness scoring all of it against
-curated ground truth, and a thin MCP server exposing them all work end-to-end against a real
-Athena download. The LangGraph agent is not built yet — see Roadmap.
+curated ground truth, a thin MCP server exposing them all, and a LangGraph agent that decomposes
+a population description, checks curated first, and pauses for human confirmation before
+including anything generated — all work end-to-end against a real Athena download. See Roadmap.
 
 ## Setup
 
@@ -65,6 +66,20 @@ python scripts/run_eval.py                                 # bm25 + expand_desce
 python scripts/run_eval.py --index data/concept_index.lance # + dense + hybrid
 ```
 
+### Optional: the agent
+
+The LangGraph agent decomposes a plain-English population description into seed terms, checks
+each against the curated phenotype library first, and pauses on the command line for you to
+accept or reject any generated (unverified) candidates before they're included. Requires an
+Anthropic API key (decomposition is a real Claude call) and the `agent` extra.
+
+```bash
+uv sync --extra agent
+export ANTHROPIC_API_KEY=...
+python scripts/run_agent.py "adults with type 2 diabetes and diabetic nephropathy"
+python scripts/run_agent.py "..." --index data/concept_index.lance  # + dense retrieval for generated candidates
+```
+
 ### Interactive exploration
 
 Both notebooks are exploration only, never pushed to production — reusable logic stays in
@@ -88,10 +103,15 @@ definition, from hierarchy expansion, or from semantic retrieval that a human sh
 
 ```
 "adults with type 2 diabetes and diabetic nephropathy"
-  → checks OHDSI Phenotype Library for a validated definition
-  → expands seed concepts through the ICD-10-CM hierarchy
+  → decomposes into seed clinical terms
+  → checks OHDSI Phenotype Library for a validated definition for each
+  → falls back to hybrid retrieval for terms with no curated match,
+    pausing for human confirmation before including anything generated
   → returns a ConceptSet with per-code provenance and citations
 ```
+
+Run it for real: `python scripts/run_agent.py "adults with type 2 diabetes and diabetic
+nephropathy"` (see Setup).
 
 ## Why not an existing terminology server
 
@@ -116,9 +136,13 @@ and the agent are independent consumers of the same engine.
 - [x] **v0.5 — eval harness.** Distance-weighted scoring, coverage, over-inclusion penalty;
       curated demo cohorts as ground truth. Decomposition accuracy deferred to `v0.7` (see
       `phenoforge.eval`) — nothing decomposes a population description yet
-- [ ] **v0.6 — encoder benchmark.** BioLORD vs SapBERT vs MedCPT vs general-purpose
-- [ ] **v0.7 — LangGraph agent.** Tiered trust routing, HITL confirmation gate
+- [x] **v0.7 — LangGraph agent.** Decompose → check curated first → generate only for
+      unresolved terms → human confirmation gate on anything generated → assemble. Real
+      interactive CLI (`scripts/run_agent.py`)
 - [ ] **v1.0 — packaging.** PyPI, docs, validation and limitations section
+
+Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
+demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.
 
 Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains
 
