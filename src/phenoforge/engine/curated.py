@@ -300,3 +300,65 @@ def find_matching_cohort(query: str, manifest: dict[str, str]) -> str | None:
     if len(best_ids) != 1:
         return None
     return best_ids[0]
+
+
+def find_curated_definition(
+    con: duckdb.DuckDBPyConnection,
+    query: str,
+    library_dir: Path,
+    fanout_threshold: int = 100,
+) -> ConceptSet:
+    """Find and resolve the best-matching OHDSI Phenotype Library cohort for a query.
+
+    Orchestrates :func:`find_matching_cohort` and :func:`load_curated_concept_set`
+    behind a single call so both the MCP ``find_curated_definition`` tool and
+    the agent's ``check_curated`` node are one-line delegations to it, keeping
+    this branching logic out of both consumers.
+
+    :param con: Open connection to ``vocab.duckdb``.
+    :param query: Free-text population description or seed clinical term.
+    :param library_dir: Directory of fetched OHDSI Phenotype Library cohorts
+        (``scripts/fetch_phenotype_library.py`` output).
+    :param fanout_threshold: Passed through to :func:`load_curated_concept_set`.
+    :returns: The best-matching cohort's resolved ``curated`` concepts, or an
+        empty set with one explanatory :class:`~phenoforge.engine.models.UnmappableTerm`
+        if the library hasn't been fetched, nothing matches, there's a tie,
+        or the manifest references a missing cohort file.
+    :rtype: ConceptSet
+    """
+    manifest_path = library_dir / "manifest.json"
+    if not manifest_path.exists():
+        return ConceptSet(
+            unmappable=[
+                UnmappableTerm(
+                    term=query,
+                    reason=(
+                        f"no phenotype library at {library_dir} — run "
+                        "scripts/fetch_phenotype_library.py first"
+                    ),
+                )
+            ]
+        )
+
+    manifest = json.loads(manifest_path.read_text())
+    cohort_id = find_matching_cohort(query, manifest)
+    if cohort_id is None:
+        return ConceptSet(
+            unmappable=[UnmappableTerm(term=query, reason="no bundled cohort matches this query")]
+        )
+    try:
+        return load_curated_concept_set(con, cohort_id, library_dir, fanout_threshold)
+    except FileNotFoundError:
+        # manifest.json references a cohort_id whose JSON file is missing
+        # (stale manifest entry, partial/interrupted fetch, manual edit).
+        return ConceptSet(
+            unmappable=[
+                UnmappableTerm(
+                    term=query,
+                    reason=(
+                        f"cohort {cohort_id} is listed in the manifest but its JSON file is "
+                        "missing — re-run scripts/fetch_phenotype_library.py"
+                    ),
+                )
+            ]
+        )

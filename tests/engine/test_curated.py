@@ -9,6 +9,7 @@ import duckdb
 
 from phenoforge.engine.curated import (
     CuratedCohortConceptItem,
+    find_curated_definition,
     find_matching_cohort,
     load_cohort_concept_items,
     load_curated_concept_set,
@@ -230,3 +231,55 @@ def test_resolve_curated_concepts_no_mapping_found(
     assert resolved == []
     assert len(unmappable) == 1
     assert "no ICD-10-CM mapping found" in unmappable[0].reason
+
+
+def test_find_curated_definition_no_library(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    result = find_curated_definition(con, "diabetic nephropathy", tmp_path / "no_such_library")
+    assert result.concepts == []
+    assert "fetch_phenotype_library" in result.unmappable[0].reason
+
+
+def test_find_curated_definition_matches_and_resolves(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Diabetic nephropathy demo"}))
+    (library_dir / "1.json").write_text(
+        json.dumps(_circe_json([_circe_item(mini_vocab.sn_normal_id, "90721000")]))
+    )
+
+    result = find_curated_definition(con, "diabetic nephropathy demo", library_dir)
+
+    assert len(result.concepts) == 1
+    assert result.concepts[0].concept_code == "E11.21"
+    assert result.concepts[0].tier is ProvenanceTier.CURATED
+
+
+def test_find_curated_definition_no_match(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
+
+    result = find_curated_definition(con, "xyzzy plugh quux", library_dir)
+
+    assert result.concepts == []
+    assert "no bundled cohort matches" in result.unmappable[0].reason
+
+
+def test_find_curated_definition_stale_manifest_entry(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
+    # deliberately no "1.json" written
+
+    result = find_curated_definition(con, "type 2 diabetes mellitus", library_dir)
+
+    assert result.concepts == []
+    assert "fetch_phenotype_library" in result.unmappable[0].reason

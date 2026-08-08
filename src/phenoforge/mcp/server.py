@@ -12,20 +12,19 @@ HTTP later only requires a different --transport value, not a rewrite.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
-from phenoforge.engine.curated import find_matching_cohort, load_curated_concept_set
+from phenoforge.engine.curated import find_curated_definition as _find_curated_definition
 from phenoforge.engine.db import DEFAULT_VOCAB_DB_PATH, connect
 from phenoforge.engine.dense import DenseRetriever, EmbedFn
 from phenoforge.engine.expansion import expand_descendants
 from phenoforge.engine.hybrid import hybrid_search
 from phenoforge.engine.lookup import lookup_by_code
-from phenoforge.engine.models import Concept, ConceptSet, UnmappableTerm
+from phenoforge.engine.models import Concept, ConceptSet
 from phenoforge.engine.retrieval import BM25Retriever
 
 mcp = FastMCP("phenoforge")
@@ -207,42 +206,7 @@ def find_curated_definition(query: str) -> ConceptSet:
         been fetched yet.
     :rtype: ConceptSet
     """
-    manifest_path = _library_dir / "manifest.json"
-    if not manifest_path.exists():
-        return ConceptSet(
-            unmappable=[
-                UnmappableTerm(
-                    term=query,
-                    reason=(
-                        f"no phenotype library at {_library_dir} — run "
-                        "scripts/fetch_phenotype_library.py first"
-                    ),
-                )
-            ]
-        )
-
-    manifest = json.loads(manifest_path.read_text())
-    cohort_id = find_matching_cohort(query, manifest)
-    if cohort_id is None:
-        return ConceptSet(
-            unmappable=[UnmappableTerm(term=query, reason="no bundled cohort matches this query")]
-        )
-    try:
-        return load_curated_concept_set(_get_connection(), cohort_id, _library_dir)
-    except FileNotFoundError:
-        # manifest.json references a cohort_id whose JSON file is missing
-        # (stale manifest entry, partial/interrupted fetch, manual edit).
-        return ConceptSet(
-            unmappable=[
-                UnmappableTerm(
-                    term=query,
-                    reason=(
-                        f"cohort {cohort_id} is listed in the manifest but its JSON file is "
-                        "missing — re-run scripts/fetch_phenotype_library.py"
-                    ),
-                )
-            ]
-        )
+    return _find_curated_definition(_get_connection(), query, _library_dir)
 
 
 def main() -> None:
