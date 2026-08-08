@@ -56,7 +56,7 @@ mypy src                     # types
 pytest                       # tests
 python scripts/load_vocab.py # build DuckDB from Athena download
 python scripts/build_index.py # build LanceDB embedding index
-jupyter lab notebooks/explore.ipynb # interactive exploration
+jupyter lab notebooks/         # interactive exploration + eval walkthrough
 ```
 
 ## Things not to do

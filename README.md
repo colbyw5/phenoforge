@@ -3,9 +3,9 @@
 > Semantic value set assembly for clinical cohort definitions, over MCP.
 
 **Status: early prototype.** The vocabulary loader, hierarchy expansion, hybrid (BM25 + dense)
-search, curated OHDSI Phenotype Library matching, and a thin MCP server exposing them all work
-end-to-end against a real Athena download. The LangGraph agent and eval harness are not built
-yet — see Roadmap.
+search, curated OHDSI Phenotype Library matching, an eval harness scoring all of it against
+curated ground truth, and a thin MCP server exposing them all work end-to-end against a real
+Athena download. The LangGraph agent is not built yet — see Roadmap.
 
 ## Setup
 
@@ -52,11 +52,28 @@ without one, it falls back to lexical-only search automatically.
 python scripts/build_index.py  # writes data/concept_index.lance; downloads BioLORD-2023 on first run
 ```
 
+### Optional: eval harness
+
+Scores each retrieval method (BM25, dense, hybrid, hierarchy expansion) against the curated
+demo cohorts as ground truth — hierarchical distance-weighted scoring, set-level coverage, and
+an over-inclusion penalty (partial credit for near-misses under the same hierarchy parent, not
+exact-match recall). Requires the phenotype library fetch step above; dense/hybrid scoring also
+needs the built index.
+
+```bash
+python scripts/run_eval.py                                 # bm25 + expand_descendants
+python scripts/run_eval.py --index data/concept_index.lance # + dense + hybrid
+```
+
 ### Interactive exploration
 
-`notebooks/explore.ipynb` calls the engine directly (no MCP transport) against your real
-built `data/vocab.duckdb` — exploration only, never pushed to production; reusable logic stays
-in `src/phenoforge/`.
+Both notebooks are exploration only, never pushed to production — reusable logic stays in
+`src/phenoforge/`.
+
+- `notebooks/explore.ipynb` calls the engine directly (no MCP transport) against your real
+  built `data/vocab.duckdb`.
+- `notebooks/evaluate.ipynb` runs the eval harness and walks through the metrics with
+  explanatory text, a method-comparison chart, and a sortable per-cohort results table.
 
 ```bash
 uv sync --extra dev
@@ -96,7 +113,9 @@ and the agent are independent consumers of the same engine.
 - [x] **v0.3 — expansion + provenance.** `ConceptSet` model, descendant expansion, and OHDSI PL
       curated matching (small hand-picked demo set — see Setup)
 - [x] **v0.4 — MCP server.** stdio transport, four tools (see below), Claude Desktop config
-- [ ] **v0.5 — eval harness.** Ontology-aware metrics, curated sets as ground truth
+- [x] **v0.5 — eval harness.** Distance-weighted scoring, coverage, over-inclusion penalty;
+      curated demo cohorts as ground truth. Decomposition accuracy deferred to `v0.7` (see
+      `phenoforge.eval`) — nothing decomposes a population description yet
 - [ ] **v0.6 — encoder benchmark.** BioLORD vs SapBERT vs MedCPT vs general-purpose
 - [ ] **v0.7 — LangGraph agent.** Tiered trust routing, HITL confirmation gate
 - [ ] **v1.0 — packaging.** PyPI, docs, validation and limitations section
