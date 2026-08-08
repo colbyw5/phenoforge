@@ -1,14 +1,14 @@
 # AGENTS.md
 
-Conventions for agentic coding tools working in this repository.
-Read `DESIGN.md` before proposing architectural changes — those decisions are settled and
-carry stated rationale.
+Conventions for agentic coding tools working in this repository. The architectural decisions
+below (layering rule, storage choices, scope boundaries) are settled — treat them as constraints,
+not suggestions, when proposing changes.
 
 ## What this is
 
 A retrieval and expansion engine for clinical value sets, exposed over MCP and consumed by a
 LangGraph agent. Three layers: engine (the contribution), MCP server (thin), agent
-(application). See `DESIGN.md`.
+(application).
 
 ## Language and style
 
@@ -61,10 +61,14 @@ jupyter lab notebooks/         # interactive exploration + eval walkthrough
 
 ## Things not to do
 
-- Do not add a hosted vector database. DuckDB + LanceDB is a decision, not an oversight (D2).
-- Do not add SNOMED. Licensing (see `DESIGN.md`, out of scope).
+- Do not add a hosted vector database. DuckDB + LanceDB is a decision, not an oversight — a
+  ~70k-concept ICD-10-CM corpus doesn't need one, and reaching for one would be a negative signal.
+- Do not ship or expose SNOMED as a user-facing vocabulary or tool surface. It's loaded locally
+  only (`load_vocab.py`, `engine/curated.py`) to resolve OHDSI Phenotype Library concept sets to
+  ICD-10-CM — using it locally is permitted under Athena's download terms, redistributing it is
+  not. Never add a SNOMED-returning lookup/search tool.
 - Do not put business logic in `src/phenoforge/mcp/`. It is a transport adapter.
-- Do not couple to stdio transport. It must stay flag-controlled (D5).
+- Do not couple to stdio transport. It must stay flag-controlled.
 - Do not flatten `ConceptSet` into a bare code list. The provenance and unmappable-resolution
   fields are the anti-hallucination commitment and are expensive to retrofit.
 - Do not commit anything from `data/`.

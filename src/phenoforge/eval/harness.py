@@ -3,8 +3,8 @@
 Orchestration layer with DB I/O — the counterpart to the pure functions in
 :mod:`phenoforge.eval.metrics`. For each bundled OHDSI Phenotype Library
 cohort, loads the curated concept set as ground truth (free — no
-hand-annotation, per DESIGN.md's Evaluation section) and scores each
-retrieval method's output against it.
+hand-annotation required, since curated value sets are already the labels)
+and scores each retrieval method's output against it.
 """
 
 from __future__ import annotations
