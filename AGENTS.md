@@ -30,6 +30,7 @@ src/phenoforge/
 └── eval/         # ontology-aware metrics, benchmark harness.
 tests/            # mirrors src/ layout
 scripts/          # one-off loaders (vocabulary download, index build)
+notebooks/        # Jupyter, exploration only — never pushed to production
 data/             # gitignored — Athena downloads, built indices
 ```
 
@@ -55,6 +56,7 @@ mypy src                     # types
 pytest                       # tests
 python scripts/load_vocab.py # build DuckDB from Athena download
 python scripts/build_index.py # build LanceDB embedding index
+jupyter lab notebooks/explore.ipynb # interactive exploration
 ```
 
 ## Things not to do

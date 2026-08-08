@@ -52,6 +52,17 @@ without one, it falls back to lexical-only search automatically.
 python scripts/build_index.py  # writes data/concept_index.lance; downloads BioLORD-2023 on first run
 ```
 
+### Interactive exploration
+
+`notebooks/explore.ipynb` calls the engine directly (no MCP transport) against your real
+built `data/vocab.duckdb` — exploration only, never pushed to production; reusable logic stays
+in `src/phenoforge/`.
+
+```bash
+uv sync --extra dev
+jupyter lab notebooks/explore.ipynb
+```
+
 ## What it does
 
 Turns a plain-English patient population description into a defensible set of ICD-10-CM codes,
