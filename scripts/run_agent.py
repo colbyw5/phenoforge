@@ -13,12 +13,15 @@ import uuid
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from langgraph.types import Command
 
 from phenoforge.agent.graph import build_graph
 from phenoforge.engine.db import connect
 from phenoforge.engine.dense import DenseRetriever
 from phenoforge.engine.models import ConceptSet
+
+load_dotenv()  # picks up ANTHROPIC_API_KEY from a local .env, if present
 
 app = typer.Typer(add_completion=False)
 

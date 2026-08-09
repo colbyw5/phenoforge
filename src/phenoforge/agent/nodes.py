@@ -73,7 +73,9 @@ def default_decomposer(model: str = "claude-sonnet-5") -> DecomposeFn:
     """
     from langchain_anthropic import ChatAnthropic
 
-    llm = ChatAnthropic(model=model, temperature=0).with_structured_output(DecomposedTerms)
+    # temperature is deprecated for claude-sonnet-5 and newer — omitted
+    # rather than pinned to a value that would raise a 400.
+    llm = ChatAnthropic(model=model).with_structured_output(DecomposedTerms)
 
     def decompose(population_description: str) -> list[str]:
         result = llm.invoke(

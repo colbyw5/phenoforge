@@ -2856,6 +2856,7 @@ agent = [
     { name = "langchain-anthropic" },
     { name = "langgraph" },
     { name = "langsmith" },
+    { name = "python-dotenv" },
 ]
 dev = [
     { name = "hypothesis" },
@@ -2889,6 +2890,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "python-dotenv", marker = "extra == 'agent'", specifier = ">=1.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sentence-transformers", specifier = ">=3.0" },

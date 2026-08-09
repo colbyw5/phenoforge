@@ -72,10 +72,12 @@ The LangGraph agent decomposes a plain-English population description into seed 
 each against the curated phenotype library first, and pauses on the command line for you to
 accept or reject any generated (unverified) candidates before they're included. Requires an
 Anthropic API key (decomposition is a real Claude call) and the `agent` extra.
+`scripts/run_agent.py` loads a local `.env` automatically (gitignored — never commit real keys),
+or export the variable directly.
 
 ```bash
 uv sync --extra agent
-export ANTHROPIC_API_KEY=...
+echo 'ANTHROPIC_API_KEY=...' > .env   # or: export ANTHROPIC_API_KEY=...
 python scripts/run_agent.py "adults with type 2 diabetes and diabetic nephropathy"
 python scripts/run_agent.py "..." --index data/concept_index.lance  # + dense retrieval for generated candidates
 ```
