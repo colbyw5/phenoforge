@@ -201,6 +201,13 @@ def test_find_matching_cohort_no_overlap_returns_none() -> None:
     assert find_matching_cohort("xyzzy plugh quux", manifest) is None
 
 
+def test_find_matching_cohort_minority_overlap_returns_none() -> None:
+    # Only "diabetic" overlaps (1 of 2 query tokens) — a single incidental
+    # shared word must not be presented as a confident curated match.
+    manifest = {"1": "Diabetic ketoacidosis"}
+    assert find_matching_cohort("diabetic nephropathy", manifest) is None
+
+
 def test_find_matching_cohort_empty_query_returns_none() -> None:
     manifest = {"1": "Type 2 diabetes mellitus"}
     assert find_matching_cohort("", manifest) is None

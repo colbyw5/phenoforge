@@ -276,11 +276,15 @@ def find_matching_cohort(query: str, manifest: dict[str, str]) -> str | None:
     :param query: Free-text population description.
     :param manifest: Cohort id -> display name, as loaded from ``manifest.json``.
     :returns: The cohort id with the most overlapping tokens, or ``None`` if
-        no cohort shares any token with the query, or if more than one
-        cohort ties for the best score. A tie is deliberately not broken by
-        picking one: a ``curated`` match claims to be safe to use as-is, and
-        guessing between equally-scored cohorts would misrepresent an
-        ambiguous match as an authoritative one.
+        no cohort shares any token with the query, if more than one cohort
+        ties for the best score, or if the best score doesn't cover a
+        majority of the query's tokens. A tie is deliberately not broken by
+        picking one, and a minority overlap is deliberately not treated as a
+        match: a ``curated`` match claims to be safe to use as-is, and both
+        guessing between equally-scored cohorts and accepting one incidental
+        shared word (e.g. "diabetic" alone matching an unrelated "Diabetic
+        ketoacidosis" cohort for a "diabetic nephropathy" query) would
+        misrepresent a weak or ambiguous match as an authoritative one.
     :rtype: str | None
     """
     query_tokens = set(_tokenize(query))
@@ -298,6 +302,8 @@ def find_matching_cohort(query: str, manifest: dict[str, str]) -> str | None:
             best_ids.append(cohort_id)
 
     if len(best_ids) != 1:
+        return None
+    if best_overlap <= len(query_tokens) / 2:
         return None
     return best_ids[0]
 
