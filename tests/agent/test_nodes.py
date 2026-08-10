@@ -37,7 +37,8 @@ def test_check_curated_splits_resolved_and_unresolved(
     state = CohortAssemblyState(
         population_description="irrelevant", seed_terms=[RESOLVING_TERM, UNRESOLVING_TERM]
     )
-    result = check_curated(state, con=con, library_dir=library_dir)
+    bm25 = BM25Retriever(con)
+    result = check_curated(state, con=con, library_dir=library_dir, bm25=bm25, dense=None)
     results = result["term_results"]
     assert len(results) == 2
     resolving, unresolving = results

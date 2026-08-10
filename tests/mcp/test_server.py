@@ -130,14 +130,15 @@ def test_find_curated_definition_stale_manifest_entry(
     library_dir = tmp_path / "phenotype_library"
     library_dir.mkdir()
     (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
-    # deliberately no "1.json" written
+    # deliberately no "1.json" written — its content is unknown, so it can
+    # never be matched, and this falls through cleanly.
     server.configure(mini_vocab.db_path, library_dir=library_dir)
 
     result = server.find_curated_definition("type 2 diabetes mellitus")
 
     assert result.concepts == []
     assert len(result.unmappable) == 1
-    assert "fetch_phenotype_library" in result.unmappable[0].reason
+    assert "no bundled cohort matches" in result.unmappable[0].reason
 
 
 def test_configure_explicit_none_resets_to_default(mini_vocab: MiniVocab, tmp_path: Path) -> None:

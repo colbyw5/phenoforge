@@ -10,12 +10,12 @@ import duckdb
 from phenoforge.engine.curated import (
     CuratedCohortConceptItem,
     find_curated_definition,
-    find_matching_cohort,
     load_cohort_concept_items,
     load_curated_concept_set,
     resolve_curated_concepts,
 )
 from phenoforge.engine.models import ProvenanceTier
+from phenoforge.engine.retrieval import BM25Retriever
 from tests.scripts.conftest import MiniVocab
 
 
@@ -187,40 +187,6 @@ def test_load_curated_concept_set(
     assert concept_set.concepts[0].source == "ohdsi_pl:1:Diabetic nephropathy demo"
 
 
-def test_find_matching_cohort() -> None:
-    manifest = {
-        "1": "Type 2 diabetes mellitus",
-        "2": "Chronic kidney disease",
-    }
-    assert find_matching_cohort("adults with type 2 diabetes", manifest) == "1"
-    assert find_matching_cohort("chronic kidney disease patients", manifest) == "2"
-
-
-def test_find_matching_cohort_no_overlap_returns_none() -> None:
-    manifest = {"1": "Type 2 diabetes mellitus"}
-    assert find_matching_cohort("xyzzy plugh quux", manifest) is None
-
-
-def test_find_matching_cohort_minority_overlap_returns_none() -> None:
-    # Only "diabetic" overlaps (1 of 2 query tokens) — a single incidental
-    # shared word must not be presented as a confident curated match.
-    manifest = {"1": "Diabetic ketoacidosis"}
-    assert find_matching_cohort("diabetic nephropathy", manifest) is None
-
-
-def test_find_matching_cohort_empty_query_returns_none() -> None:
-    manifest = {"1": "Type 2 diabetes mellitus"}
-    assert find_matching_cohort("", manifest) is None
-
-
-def test_find_matching_cohort_tie_returns_none() -> None:
-    manifest = {
-        "40": "Diabetes Mellitus Type 2 or history of diabetes",
-        "503": "Type 2 diabetes mellitus",
-    }
-    assert find_matching_cohort("type 2 diabetes", manifest) is None
-
-
 def test_resolve_curated_concepts_no_mapping_found(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection
 ) -> None:
@@ -243,22 +209,30 @@ def test_resolve_curated_concepts_no_mapping_found(
 def test_find_curated_definition_no_library(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    result = find_curated_definition(con, "diabetic nephropathy", tmp_path / "no_such_library")
+    bm25 = BM25Retriever(con)
+    result = find_curated_definition(
+        con, "diabetic nephropathy", tmp_path / "no_such_library", bm25
+    )
     assert result.concepts == []
     assert "fetch_phenotype_library" in result.unmappable[0].reason
 
 
-def test_find_curated_definition_matches_and_resolves(
+def test_find_curated_definition_matches_on_curated_code_content(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
+    # The cohort's *display name* ("Diabetic ketoacidosis") shares no
+    # meaningful overlap with the query — only its resolved code content
+    # (E11.21, via the mapped SNOMED item) does, which is what should drive
+    # the match now, not the title.
     library_dir = tmp_path / "phenotype_library"
     library_dir.mkdir()
-    (library_dir / "manifest.json").write_text(json.dumps({"1": "Diabetic nephropathy demo"}))
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Diabetic ketoacidosis"}))
     (library_dir / "1.json").write_text(
         json.dumps(_circe_json([_circe_item(mini_vocab.sn_normal_id, "90721000")]))
     )
+    bm25 = BM25Retriever(con)
 
-    result = find_curated_definition(con, "diabetic nephropathy demo", library_dir)
+    result = find_curated_definition(con, "diabetic nephropathy", library_dir, bm25)
 
     assert len(result.concepts) == 1
     assert result.concepts[0].concept_code == "E11.21"
@@ -271,22 +245,45 @@ def test_find_curated_definition_no_match(
     library_dir = tmp_path / "phenotype_library"
     library_dir.mkdir()
     (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
+    bm25 = BM25Retriever(con)
 
-    result = find_curated_definition(con, "xyzzy plugh quux", library_dir)
+    result = find_curated_definition(con, "xyzzy plugh quux", library_dir, bm25)
 
     assert result.concepts == []
     assert "no bundled cohort matches" in result.unmappable[0].reason
 
 
-def test_find_curated_definition_stale_manifest_entry(
+def test_find_curated_definition_ambiguous_match_returns_none(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    # Two different cohorts both resolve to the same code (E11.21) — the
+    # best-matching code is real, but which cohort's definition to cite is
+    # ambiguous, so this must not guess.
+    library_dir = tmp_path / "phenotype_library"
+    library_dir.mkdir()
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Cohort A", "2": "Cohort B"}))
+    item_json = json.dumps(_circe_json([_circe_item(mini_vocab.sn_normal_id, "90721000")]))
+    (library_dir / "1.json").write_text(item_json)
+    (library_dir / "2.json").write_text(item_json)
+    bm25 = BM25Retriever(con)
+
+    result = find_curated_definition(con, "diabetic nephropathy", library_dir, bm25)
+
+    assert result.concepts == []
+    assert "ambiguous" in result.unmappable[0].reason
+
+
+def test_find_curated_definition_skips_cohort_with_missing_json(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
     library_dir = tmp_path / "phenotype_library"
     library_dir.mkdir()
-    (library_dir / "manifest.json").write_text(json.dumps({"1": "Type 2 diabetes mellitus"}))
-    # deliberately no "1.json" written
+    (library_dir / "manifest.json").write_text(json.dumps({"1": "Diabetic ketoacidosis"}))
+    # deliberately no "1.json" written — a stale manifest entry can never
+    # be matched, since its content is unknown, and falls through cleanly.
+    bm25 = BM25Retriever(con)
 
-    result = find_curated_definition(con, "type 2 diabetes mellitus", library_dir)
+    result = find_curated_definition(con, "diabetic nephropathy", library_dir, bm25)
 
     assert result.concepts == []
-    assert "fetch_phenotype_library" in result.unmappable[0].reason
+    assert "no bundled cohort matches" in result.unmappable[0].reason

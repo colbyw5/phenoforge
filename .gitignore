@@ -31,3 +31,6 @@ htmlcov/
 # Local agent/tool state
 .claude/
 .serena/
+
+# Local-only notes
+DECISIONS.md

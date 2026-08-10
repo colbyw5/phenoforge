@@ -101,26 +101,36 @@ def decompose(state: CohortAssemblyState, *, decompose_fn: DecomposeFn) -> dict[
 
 
 def check_curated(
-    state: CohortAssemblyState, *, con: duckdb.DuckDBPyConnection, library_dir: Path
+    state: CohortAssemblyState,
+    *,
+    con: duckdb.DuckDBPyConnection,
+    library_dir: Path,
+    bm25: BM25Retriever,
+    dense: DenseRetriever | None,
 ) -> dict[str, object]:
     """Check every seed term against the curated OHDSI Phenotype Library.
 
     Delegates to :func:`~phenoforge.engine.curated.find_curated_definition`
-    per term. A term resolves (``SeedTermResult.resolved = True``) only if
-    the curated lookup returns at least one concept; a curated miss (even
-    one carrying its own explanatory
-    :class:`~phenoforge.engine.models.UnmappableTerm`) leaves it unresolved
-    for :func:`generate` to pick up.
+    per term, which matches on the bundled cohorts' own resolved code
+    content (via the same ``bm25``/``dense`` retrievers :func:`generate`
+    uses) rather than their display names. A term resolves
+    (``SeedTermResult.resolved = True``) only if the curated lookup returns
+    at least one concept; a curated miss (even one carrying its own
+    explanatory :class:`~phenoforge.engine.models.UnmappableTerm`) leaves it
+    unresolved for :func:`generate` to pick up.
 
     :param state: Current graph state; reads ``seed_terms``.
     :param con: Open connection to ``vocab.duckdb``.
     :param library_dir: Fetched phenotype library directory.
+    :param bm25: Built BM25 retriever, shared with :func:`generate`.
+    :param dense: Built dense retriever, or ``None`` to degrade to BM25-only,
+        shared with :func:`generate`.
     :returns: Partial state update: ``{"term_results": [...]}``.
     :rtype: dict[str, object]
     """
     results = []
     for term in state.seed_terms:
-        curated = find_curated_definition(con, term, library_dir)
+        curated = find_curated_definition(con, term, library_dir, bm25, dense)
         results.append(SeedTermResult(term=term, curated=curated, resolved=bool(curated.concepts)))
     return {"term_results": results}
 

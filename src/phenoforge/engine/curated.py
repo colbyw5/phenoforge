@@ -5,6 +5,14 @@ cohort JSON, resolves each SNOMED concept id to ICD-10-CM via the
 ``Mapped from`` edges loaded by ``scripts/load_vocab.py``, and applies a
 fan-out guard so a broad SNOMED grouper in a cohort definition doesn't
 silently expand into thousands of unrelated ICD-10-CM codes.
+
+A free-text query is matched to a bundled cohort via
+:func:`find_curated_definition`, which searches the same BM25/dense
+retrieval used for ``generated`` results against the full ICD-10-CM
+vocabulary and checks whether the best hit is actually a member of a
+cohort's *resolved code list* — not, as an earlier version of this did, by
+comparing the query against cohort *display names* (which let one
+incidental shared word confidently mismatch an unrelated cohort).
 """
 
 from __future__ import annotations
@@ -15,13 +23,15 @@ from pathlib import Path
 import duckdb
 from pydantic import BaseModel
 
+from phenoforge.engine.dense import DenseRetriever
+from phenoforge.engine.hybrid import hybrid_search
 from phenoforge.engine.models import (
     ConceptSet,
     ConceptWithProvenance,
     ProvenanceTier,
     UnmappableTerm,
 )
-from phenoforge.engine.retrieval import _tokenize
+from phenoforge.engine.retrieval import BM25Retriever
 
 _ICD10CM = "ICD10CM"
 _SNOMED = "SNOMED"
@@ -265,71 +275,83 @@ def load_curated_concept_set(
     return ConceptSet(concepts=resolved, unmappable=unmappable)
 
 
-def find_matching_cohort(query: str, manifest: dict[str, str]) -> str | None:
-    """Find the best-matching cohort id for a free-text query by token overlap.
+def _build_cohort_membership(
+    con: duckdb.DuckDBPyConnection,
+    library_dir: Path,
+    manifest: dict[str, str],
+    fanout_threshold: int,
+) -> dict[int, set[str]]:
+    """Resolve every bundled cohort and index which cohorts contain each concept.
 
-    The bundled demo library has only a handful of cohorts, which doesn't
-    warrant a BM25 index (see :class:`~phenoforge.engine.retrieval.BM25Retriever`
-    for that approach at ICD-10-CM's ~98k-concept scale) — simple token
-    overlap against cohort display names is sufficient here.
+    Re-resolves all cohorts on every call rather than caching — at the
+    bundled demo library's scale (8 cohorts, small JSON files) this is
+    cheap, and caching would need invalidation the moment
+    ``fetch_phenotype_library.py`` re-runs. Revisit if the library grows.
 
-    :param query: Free-text population description.
+    :param con: Open connection to ``vocab.duckdb``.
+    :param library_dir: Directory of fetched OHDSI Phenotype Library cohorts.
     :param manifest: Cohort id -> display name, as loaded from ``manifest.json``.
-    :returns: The cohort id with the most overlapping tokens, or ``None`` if
-        no cohort shares any token with the query, if more than one cohort
-        ties for the best score, or if the best score doesn't cover a
-        majority of the query's tokens. A tie is deliberately not broken by
-        picking one, and a minority overlap is deliberately not treated as a
-        match: a ``curated`` match claims to be safe to use as-is, and both
-        guessing between equally-scored cohorts and accepting one incidental
-        shared word (e.g. "diabetic" alone matching an unrelated "Diabetic
-        ketoacidosis" cohort for a "diabetic nephropathy" query) would
-        misrepresent a weak or ambiguous match as an authoritative one.
-    :rtype: str | None
+    :param fanout_threshold: Passed through to :func:`resolve_curated_concepts`.
+    :returns: ICD-10-CM ``concept_id`` -> the set of cohort ids whose
+        resolved definition includes it. Cohorts with a missing JSON file
+        (stale manifest entry) are silently skipped, matching
+        :func:`load_curated_concept_set`'s tolerance for that case elsewhere.
+    :rtype: dict[int, set[str]]
     """
-    query_tokens = set(_tokenize(query))
-    if not query_tokens:
-        return None
-
-    best_ids: list[str] = []
-    best_overlap = 0
-    for cohort_id, name in manifest.items():
-        overlap = len(query_tokens & set(_tokenize(name)))
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_ids = [cohort_id]
-        elif overlap == best_overlap and overlap > 0:
-            best_ids.append(cohort_id)
-
-    if len(best_ids) != 1:
-        return None
-    if best_overlap <= len(query_tokens) / 2:
-        return None
-    return best_ids[0]
+    membership: dict[int, set[str]] = {}
+    for cohort_id, cohort_name in manifest.items():
+        cohort_json_path = library_dir / f"{cohort_id}.json"
+        if not cohort_json_path.exists():
+            continue
+        items = load_cohort_concept_items(cohort_json_path)
+        resolved, _ = resolve_curated_concepts(con, cohort_id, cohort_name, items, fanout_threshold)
+        for concept in resolved:
+            membership.setdefault(concept.concept_id, set()).add(cohort_id)
+    return membership
 
 
 def find_curated_definition(
     con: duckdb.DuckDBPyConnection,
     query: str,
     library_dir: Path,
+    bm25: BM25Retriever,
+    dense: DenseRetriever | None = None,
     fanout_threshold: int = 100,
+    k: int = 10,
 ) -> ConceptSet:
-    """Find and resolve the best-matching OHDSI Phenotype Library cohort for a query.
+    """Find and resolve the OHDSI Phenotype Library cohort whose own codes best match a query.
 
-    Orchestrates :func:`find_matching_cohort` and :func:`load_curated_concept_set`
-    behind a single call so both the MCP ``find_curated_definition`` tool and
-    the agent's ``check_curated`` node are one-line delegations to it, keeping
-    this branching logic out of both consumers.
+    Runs the same BM25 (+ dense, if given) search used for ``generated``
+    retrieval against the full ICD-10-CM vocabulary, then walks the ranked
+    results looking for the best-ranked one that is actually a member of a
+    bundled cohort's resolved code list — matching on real curated code
+    content rather than a cohort's display name, which
+    (found via a real end-to-end run) let a single incidental shared word
+    like "diabetic" curated-match "diabetic nephropathy" to an unrelated
+    "Diabetic ketoacidosis" cohort. A hit belonging to more than one cohort
+    is deliberately treated as no match rather than guessed between them,
+    for the same reason: a ``curated`` result claims to be safe to use
+    as-is, and an ambiguous one would misrepresent that.
 
     :param con: Open connection to ``vocab.duckdb``.
     :param query: Free-text population description or seed clinical term.
     :param library_dir: Directory of fetched OHDSI Phenotype Library cohorts
         (``scripts/fetch_phenotype_library.py`` output).
-    :param fanout_threshold: Passed through to :func:`load_curated_concept_set`.
-    :returns: The best-matching cohort's resolved ``curated`` concepts, or an
+    :param bm25: A built BM25 retriever over ICD-10-CM concept names —
+        shared with :func:`~phenoforge.engine.hybrid.hybrid_search`'s other
+        callers rather than built fresh here.
+    :param dense: A built dense retriever, or ``None`` to search lexically
+        only, matching :func:`~phenoforge.engine.hybrid.hybrid_search`'s
+        existing fallback.
+    :param fanout_threshold: Passed through to cohort resolution.
+    :param k: How many top hybrid-search results to check for cohort
+        membership before giving up.
+    :returns: The matched cohort's resolved ``curated`` concepts, or an
         empty set with one explanatory :class:`~phenoforge.engine.models.UnmappableTerm`
-        if the library hasn't been fetched, nothing matches, there's a tie,
-        or the manifest references a missing cohort file.
+        if the library hasn't been fetched, nothing in the top ``k`` results
+        belongs to a cohort, or the best hit is claimed by more than one
+        cohort. A cohort with a stale manifest entry (missing JSON file)
+        simply can never be matched — see :func:`_build_cohort_membership`.
     :rtype: ConceptSet
     """
     manifest_path = library_dir / "manifest.json"
@@ -347,24 +369,35 @@ def find_curated_definition(
         )
 
     manifest = json.loads(manifest_path.read_text())
-    cohort_id = find_matching_cohort(query, manifest)
+    membership = _build_cohort_membership(con, library_dir, manifest, fanout_threshold)
+
+    candidates, _ = hybrid_search(bm25, dense, query, k=k)
+    cohort_id: str | None = None
+    for candidate in candidates:
+        cohort_ids = membership.get(candidate.concept_id)
+        if not cohort_ids:
+            continue
+        if len(cohort_ids) > 1:
+            return ConceptSet(
+                unmappable=[
+                    UnmappableTerm(
+                        term=query,
+                        reason=(
+                            f"best match ({candidate.concept_code}) belongs to multiple "
+                            f"curated cohorts ({', '.join(sorted(cohort_ids))}) — ambiguous"
+                        ),
+                    )
+                ]
+            )
+        cohort_id = next(iter(cohort_ids))
+        break
+
     if cohort_id is None:
         return ConceptSet(
             unmappable=[UnmappableTerm(term=query, reason="no bundled cohort matches this query")]
         )
-    try:
-        return load_curated_concept_set(con, cohort_id, library_dir, fanout_threshold)
-    except FileNotFoundError:
-        # manifest.json references a cohort_id whose JSON file is missing
-        # (stale manifest entry, partial/interrupted fetch, manual edit).
-        return ConceptSet(
-            unmappable=[
-                UnmappableTerm(
-                    term=query,
-                    reason=(
-                        f"cohort {cohort_id} is listed in the manifest but its JSON file is "
-                        "missing — re-run scripts/fetch_phenotype_library.py"
-                    ),
-                )
-            ]
-        )
+    # cohort_id only ever comes from membership, which already required
+    # successfully reading this exact JSON file — no FileNotFoundError
+    # handling needed here (a stale manifest entry just means that cohort
+    # can never be matched; see _build_cohort_membership).
+    return load_curated_concept_set(con, cohort_id, library_dir, fanout_threshold)

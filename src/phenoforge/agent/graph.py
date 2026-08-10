@@ -142,7 +142,10 @@ def build_graph(
 
     builder = StateGraph(CohortAssemblyState)
     builder.add_node("decompose", partial(decompose, decompose_fn=resolved_decompose_fn))
-    builder.add_node("check_curated", partial(check_curated, con=con, library_dir=library_dir))
+    builder.add_node(
+        "check_curated",
+        partial(check_curated, con=con, library_dir=library_dir, bm25=bm25, dense=dense),
+    )
     builder.add_node("generate", partial(generate, bm25=bm25, dense=dense))
     builder.add_node("confirm", confirm)
     builder.add_node("assemble", assemble)

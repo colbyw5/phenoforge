@@ -206,7 +206,9 @@ def find_curated_definition(query: str) -> ConceptSet:
         been fetched yet.
     :rtype: ConceptSet
     """
-    return _find_curated_definition(_get_connection(), query, _library_dir)
+    return _find_curated_definition(
+        _get_connection(), query, _library_dir, _get_retriever(), _get_dense_retriever()
+    )
 
 
 def main() -> None:
