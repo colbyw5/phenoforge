@@ -21,15 +21,16 @@ def reciprocal_rank_fusion(
     result_lists: list[list[ConceptWithProvenance]],
     k: int = 10,
     rrf_k: int = _DEFAULT_RRF_K,
+    weights: list[float] | None = None,
 ) -> list[ConceptWithProvenance]:
     """Fuse ranked concept lists by reciprocal rank.
 
-    Score for a concept is the sum of ``1 / (rrf_k + rank)`` across every
-    input list it appears in (rank is 0-indexed position within that list).
-    ``rrf_k=60`` is the standard default from the original RRF literature —
-    it sidesteps needing to normalize scores across retrievers whose raw
-    scores aren't comparable (BM25 term-frequency scores vs. cosine
-    similarity), since RRF only uses rank, not magnitude.
+    Score for a concept is the sum of ``weight * 1 / (rrf_k + rank)`` across
+    every input list it appears in (rank is 0-indexed position within that
+    list). ``rrf_k=60`` is the standard default from the original RRF
+    literature — it sidesteps needing to normalize scores across retrievers
+    whose raw scores aren't comparable (BM25 term-frequency scores vs.
+    cosine similarity), since RRF only uses rank, not magnitude.
 
     A concept appearing in multiple lists is deduplicated by ``concept_id``,
     keeping the :class:`~phenoforge.engine.models.ConceptWithProvenance`
@@ -42,15 +43,23 @@ def reciprocal_rank_fusion(
         best-first.
     :param k: Maximum number of fused results to return.
     :param rrf_k: RRF rank-damping constant.
+    :param weights: Per-list multiplier on each list's RRF contribution,
+        same length and order as ``result_lists``. Defaults to ``1.0`` for
+        every list (the original unweighted behavior — uniform scaling
+        never changes relative order, so this is a strict superset of the
+        prior signature, not a behavior change for existing callers).
     :returns: Top-``k`` concepts by fused score, descending.
     :rtype: list[ConceptWithProvenance]
     """
+    if weights is None:
+        weights = [1.0] * len(result_lists)
+
     scores: dict[int, float] = {}
     best_instance: dict[int, tuple[float, ConceptWithProvenance]] = {}
 
-    for result_list in result_lists:
+    for result_list, weight in zip(result_lists, weights, strict=True):
         for rank, concept in enumerate(result_list):
-            contribution = 1.0 / (rrf_k + rank)
+            contribution = weight / (rrf_k + rank)
             scores[concept.concept_id] = scores.get(concept.concept_id, 0.0) + contribution
 
             existing = best_instance.get(concept.concept_id)
@@ -66,6 +75,7 @@ def hybrid_search(
     dense: DenseRetriever | None,
     query: str,
     k: int = 10,
+    dense_weight: float = 0.5,
 ) -> tuple[list[ConceptWithProvenance], UnmappableTerm | None]:
     """Search using BM25 and, if available, dense retrieval, fused by RRF.
 
@@ -79,6 +89,14 @@ def hybrid_search(
     :param dense: A built dense retriever, or ``None`` to search lexically only.
     :param query: Free-text search string.
     :param k: Maximum number of results to return.
+    :param dense_weight: Dense's share of the fused RRF score, in ``[0, 1]``;
+        BM25 gets ``1 - dense_weight``. ``0.5`` (equal weight) matches this
+        function's original, unweighted behavior — uniform scaling of both
+        lists never changes relative order, so the default is a strict
+        no-op for existing callers. Ignored (BM25-only) when ``dense`` is
+        ``None``. See ``scripts/sweep_hybrid_weights.py`` for measuring
+        whether a different value scores better against curated ground
+        truth before changing this default.
     :returns: A tuple of (fused, deduplicated results ordered by combined
         relevance; an :class:`~phenoforge.engine.models.UnmappableTerm` if
         nothing matched, else ``None``).
@@ -87,7 +105,11 @@ def hybrid_search(
     bm25_results, bm25_unmappable = bm25.search(query, k=k)
     if dense is not None:
         dense_results, _ = dense.search(query, k=k)
-        fused = reciprocal_rank_fusion([bm25_results, dense_results], k=k)
+        fused = reciprocal_rank_fusion(
+            [bm25_results, dense_results],
+            k=k,
+            weights=[1.0 - dense_weight, dense_weight],
+        )
     else:
         fused = bm25_results
 
