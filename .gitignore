@@ -28,6 +28,9 @@ htmlcov/
 .idea/
 .vscode/
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Local agent/tool state
 .claude/
 .serena/
