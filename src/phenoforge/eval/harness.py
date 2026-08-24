@@ -133,6 +133,7 @@ def _predict(
     bm25: BM25Retriever,
     dense: DenseRetriever | None,
     k: int,
+    dense_weight: float = 0.5,
 ) -> list[str] | None:
     """Generate predicted codes for one method, or ``None`` if the method is unavailable."""
     if method == "bm25":
@@ -144,7 +145,7 @@ def _predict(
         results, _ = dense.search(cohort_name, k=k)
         return [c.concept_code for c in results]
     if method == "hybrid":
-        results, _ = hybrid_search(bm25, dense, cohort_name, k=k)
+        results, _ = hybrid_search(bm25, dense, cohort_name, k=k, dense_weight=dense_weight)
         return [c.concept_code for c in results]
     if method == "expand_descendants":
         if not ground_truth_codes:
@@ -162,6 +163,7 @@ def run_benchmark(
     dense: DenseRetriever | None = None,
     k: int = 25,
     fanout_threshold: int = 100,
+    dense_weight: float = 0.5,
 ) -> BenchmarkReport:
     """Run every requested method against every cohort, aggregate the results.
 
@@ -189,6 +191,10 @@ def run_benchmark(
         own tests never download a real model.
     :param k: Result count passed to each retrieval method.
     :param fanout_threshold: Passed through to curated ground-truth loading.
+    :param dense_weight: Passed through to :func:`~phenoforge.engine.hybrid.hybrid_search`
+        for the ``"hybrid"`` method — dense's share of the fused RRF score.
+        See ``scripts/sweep_hybrid_weights.py`` for sweeping this against
+        curated ground truth.
     :returns: Full benchmark report across all cohorts and methods.
     :rtype: BenchmarkReport
     """
@@ -205,7 +211,9 @@ def run_benchmark(
         ground_truth_codes = [c.concept_code for c in ground_truth.concepts]
 
         for method in methods:
-            predicted_codes = _predict(con, method, cohort_name, ground_truth_codes, bm25, dense, k)
+            predicted_codes = _predict(
+                con, method, cohort_name, ground_truth_codes, bm25, dense, k, dense_weight
+            )
             if predicted_codes is None:
                 continue
             results.append(

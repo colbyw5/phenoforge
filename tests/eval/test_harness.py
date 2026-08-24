@@ -81,6 +81,28 @@ def test_run_benchmark_skips_dense_dependent_methods_without_dense(
     assert report.results == []
 
 
+def test_run_benchmark_dense_weight_reaches_hybrid_search(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, library_dir: Path
+) -> None:
+    """dense_weight=0.0 on "hybrid" ranks every BM25 hit ahead of every
+    dense-only hit (a zero-weighted list still pads the fused results with
+    its own items at score 0 — see reciprocal_rank_fusion — so this checks
+    ranking, not list identity). Proves the parameter actually reaches
+    hybrid_search rather than being ignored."""
+    dense = DenseRetriever(con, embed_fn=fake_embed_fn)
+    bm25_only = run_benchmark(con, library_dir, cohort_ids=["1"], methods=["bm25"], dense=dense)
+    bm25_codes = next(r for r in bm25_only.results if r.method == "bm25").predicted_codes
+
+    dense_zero_weight = run_benchmark(
+        con, library_dir, cohort_ids=["1"], methods=["hybrid"], dense=dense, dense_weight=0.0
+    )
+    hybrid_codes_at_zero = next(
+        r for r in dense_zero_weight.results if r.method == "hybrid"
+    ).predicted_codes
+    assert hybrid_codes_at_zero[: len(bm25_codes)] == bm25_codes
+    assert len(hybrid_codes_at_zero) > len(bm25_codes)  # padded by score-0 dense-only items
+
+
 def test_run_benchmark_unknown_method_raises(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, library_dir: Path
 ) -> None:
