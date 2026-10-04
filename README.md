@@ -10,6 +10,18 @@ curated ground truth, a thin MCP server exposing them all, and a LangGraph agent
 a population description, checks curated first, and pauses for human confirmation before
 including anything generated — all work end-to-end against a real Athena download. See Roadmap.
 
+## Try it now, no setup
+
+```bash
+git clone https://github.com/colbyw5/phenoforge && cd phenoforge
+uv run python scripts/run_demo.py "diabetic nephropathy"   # or: make demo
+```
+
+Runs real hybrid search and hierarchy expansion against a small, bundled, redistributable
+ICD-10-CM-only demo vocabulary (see `demo/README.md`) — no Athena account, no API key, no model
+download. It only exercises the `generated` tier (BM25 + hierarchy expansion); the `curated`
+tier, dense retrieval, and the full agent need the real Setup below.
+
 ## Setup
 
 Published to PyPI as `py-phenoforge` (the bare `phenoforge` name is taken by an unrelated
@@ -155,8 +167,9 @@ and the agent are independent consumers of the same engine.
       unresolved terms → human confirmation gate on anything generated → assemble. Real
       interactive CLI (`scripts/run_agent.py`)
 - [ ] **v1.0 — packaging.** One-command setup (`make setup`), CI (lint/typecheck/test on every
-      push), and a PyPI release pipeline (tag-triggered, trusted publishing) are in place as
-      `py-phenoforge`; docs and a validation and limitations section remain
+      push), a PyPI release pipeline (tag-triggered, trusted publishing) as `py-phenoforge`, and
+      a zero-setup demo (`make demo`, no account/key/download needed) are in place; a validation
+      and limitations section remains
 
 Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
 demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.

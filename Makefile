@@ -1,7 +1,11 @@
-.PHONY: install lint format typecheck test check build-vocab fetch-library build-index setup clean
+.PHONY: install lint format typecheck test check demo build-vocab fetch-library build-index setup clean
 
 install:
 	uv sync --extra agent --extra dev
+
+# No Athena account, API key, or model download needed — see demo/README.md.
+demo:
+	uv run python scripts/run_demo.py
 
 lint:
 	uv run ruff check src tests scripts
