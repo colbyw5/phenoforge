@@ -166,15 +166,17 @@ and the agent are independent consumers of the same engine.
 - [x] **v0.7 — LangGraph agent.** Decompose → check curated first → generate only for
       unresolved terms → human confirmation gate on anything generated → assemble. Real
       interactive CLI (`scripts/run_agent.py`)
-- [ ] **v1.0 — packaging.** One-command setup (`make setup`), CI (lint/typecheck/test on every
-      push), a PyPI release pipeline (tag-triggered, trusted publishing) as `py-phenoforge`, and
-      a zero-setup demo (`make demo`, no account/key/download needed) are in place; a validation
-      and limitations section remains
+- [x] **v1.0 — packaging.** One-command setup (`make setup`), CI (lint/typecheck/test on every
+      push), a PyPI release pipeline (tag-triggered, trusted publishing) as `py-phenoforge`, a
+      zero-setup demo (`make demo`, no account/key/download needed), and a validation and
+      limitations section (see below)
 
 Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
 demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.
 
-Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains
+Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains,
+hosted API reference docs (Sphinx/mkdocs) — docstrings are complete throughout `src/`, just not
+yet published anywhere
 
 Watching: [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a
 schema-constrained "System One Model" that could fit the `decompose` node's structured-output
@@ -196,6 +198,50 @@ independently.
 bundled demo cohorts. Everything from `expand_hierarchy` and `search_concepts` is `generated`
 provenance — ungrounded, structural or lexical/semantic only, and meant to be confirmed by a
 human before use in a cohort definition.
+
+## Validation and limitations
+
+The only quantitative evaluation that exists is `scripts/run_eval.py` scoring each retrieval
+method against the 8 bundled OHDSI Phenotype Library demo cohorts (diabetes/kidney-relevant) as
+ground truth. Current numbers on that set:
+
+| method | coverage | over-inclusion | hierarchical |
+|---|---|---|---|
+| `bm25` | 0.625 | 0.367 | 0.535 |
+| `expand_descendants` | 0.645 | 0.138 | 0.697 |
+| `dense` | 0.850 | 0.528 | 0.586 |
+| `hybrid` (0.5/0.5) | 0.858 | 0.399 | 0.692 |
+
+What this does and doesn't establish:
+
+- **8 cohorts, one disease area.** This is not a general benchmark. It says nothing about
+  performance outside diabetes/kidney conditions, rare diseases, or codes with sparse/ambiguous
+  natural-language descriptions. Treat every number above as specific to this narrow slice, not
+  as a claim about ICD-10-CM retrieval in general.
+- **Over-inclusion is the dominant error mode, not coverage.** Every method pulls in more
+  codes than the curated ground truth (dense especially: 0.528 over-inclusion against 0.850
+  coverage) — the system errs toward casting a wide net and relying on human review to reject
+  false positives, not toward silently missing codes. Anyone using the `generated` tier should
+  expect to reject a meaningful fraction of what it returns, not rubber-stamp it.
+- **Decomposition has no quantitative evaluation at all.** The agent's `decompose` node (a real
+  Claude call turning a population description into seed terms) has been exercised on exactly
+  one worked example end-to-end (see `notebooks/agent_walkthrough.ipynb`), not benchmarked
+  against a labeled set of population descriptions. Its error rate on descriptions unlike that
+  example — ambiguous phrasing, multiple unrelated conditions, qualifiers it should drop — is
+  unknown.
+- **Curated-tier coverage is narrow by construction.** Only 8 cohorts are bundled; any
+  population description outside them falls through entirely to the unverified `generated`
+  tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops concepts whose fan-out
+  exceeds a configurable threshold (`find_high_fanout_snomed_concepts`) rather than including
+  everything — a real cohort definition can lose codes this way, and the demo cohorts above may
+  not exercise that path.
+- **No scale or concurrency testing.** Built and measured against one developer's own Athena
+  download on one machine. No data on index build time, query latency, or memory at a larger
+  vocabulary, or under concurrent MCP clients.
+- **English, US ICD-10-CM only.** No other language, no RxNorm/LOINC/other domains (see Roadmap).
+- **The human-confirmation gate has no audit trail.** `confirm` pauses for review, but nothing
+  records who approved what or persists decisions across runs — each CLI invocation starts a
+  fresh thread with no memory of past confirmations.
 
 ## Releasing
 
