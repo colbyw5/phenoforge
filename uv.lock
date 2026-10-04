@@ -2837,68 +2837,6 @@ wheels = [
 ]
 
 [[package]]
-name = "phenoforge"
-version = "0.1.0.dev0"
-source = { editable = "." }
-dependencies = [
-    { name = "duckdb" },
-    { name = "httpx" },
-    { name = "lancedb" },
-    { name = "mcp" },
-    { name = "pydantic" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-agent = [
-    { name = "langchain-anthropic" },
-    { name = "langgraph" },
-    { name = "langsmith" },
-    { name = "python-dotenv" },
-]
-dev = [
-    { name = "hypothesis" },
-    { name = "ipykernel" },
-    { name = "ipywidgets" },
-    { name = "jupyterlab" },
-    { name = "matplotlib" },
-    { name = "mypy" },
-    { name = "pandas" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "duckdb", specifier = ">=1.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
-    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29" },
-    { name = "ipywidgets", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "lancedb", specifier = ">=0.13" },
-    { name = "langchain-anthropic", marker = "extra == 'agent'", specifier = ">=0.2" },
-    { name = "langgraph", marker = "extra == 'agent'", specifier = ">=0.2" },
-    { name = "langsmith", marker = "extra == 'agent'", specifier = ">=0.1" },
-    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8" },
-    { name = "mcp", specifier = ">=1.2" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
-    { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.0" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "python-dotenv", marker = "extra == 'agent'", specifier = ">=1.0" },
-    { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "sentence-transformers", specifier = ">=3.0" },
-    { name = "typer", specifier = ">=0.12" },
-]
-provides-extras = ["agent", "dev"]
-
-[[package]]
 name = "pillow"
 version = "12.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3067,6 +3005,68 @@ sdist = { url = "https://files.pythonhosted.org/packages/cd/05/0a34433a064256a57
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/37/efad0257dc6e593a18957422533ff0f87ede7c9c6ea010a2177d738fb82f/pure_eval-0.2.3-py3-none-any.whl", hash = "sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0", size = 11842, upload-time = "2024-07-21T12:58:20.04Z" },
 ]
+
+[[package]]
+name = "py-phenoforge"
+version = "0.1.0.dev0"
+source = { editable = "." }
+dependencies = [
+    { name = "duckdb" },
+    { name = "httpx" },
+    { name = "lancedb" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "rank-bm25" },
+    { name = "sentence-transformers" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+agent = [
+    { name = "langchain-anthropic" },
+    { name = "langgraph" },
+    { name = "langsmith" },
+    { name = "python-dotenv" },
+]
+dev = [
+    { name = "hypothesis" },
+    { name = "ipykernel" },
+    { name = "ipywidgets" },
+    { name = "jupyterlab" },
+    { name = "matplotlib" },
+    { name = "mypy" },
+    { name = "pandas" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", specifier = ">=1.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29" },
+    { name = "ipywidgets", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "lancedb", specifier = ">=0.13" },
+    { name = "langchain-anthropic", marker = "extra == 'agent'", specifier = ">=0.2" },
+    { name = "langgraph", marker = "extra == 'agent'", specifier = ">=0.2" },
+    { name = "langsmith", marker = "extra == 'agent'", specifier = ">=0.1" },
+    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
+    { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "python-dotenv", marker = "extra == 'agent'", specifier = ">=1.0" },
+    { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "typer", specifier = ">=0.12" },
+]
+provides-extras = ["agent", "dev"]
 
 [[package]]
 name = "pyarrow"

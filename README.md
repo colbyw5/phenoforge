@@ -12,6 +12,12 @@ including anything generated — all work end-to-end against a real Athena downl
 
 ## Setup
 
+Published to PyPI as `py-phenoforge` (the bare `phenoforge` name is taken by an unrelated
+package) — `pip install py-phenoforge` or `uv add py-phenoforge` gets you the library and the
+`phenoforge-mcp` CLI, importable as `phenoforge`. That alone isn't runnable yet, though: every
+tool needs the vocabulary database built below from your own Athena download, which can't be
+redistributed on PyPI.
+
 Requires your own [OHDSI Athena](https://athena.ohdsi.org/) bulk download — vocabulary content
 carries its own license terms, so it can't be bundled with this repo.
 
@@ -148,8 +154,9 @@ and the agent are independent consumers of the same engine.
 - [x] **v0.7 — LangGraph agent.** Decompose → check curated first → generate only for
       unresolved terms → human confirmation gate on anything generated → assemble. Real
       interactive CLI (`scripts/run_agent.py`)
-- [ ] **v1.0 — packaging.** One-command setup (`make setup`) and CI (lint/typecheck/test on
-      every push) are in place; PyPI, docs, and a validation and limitations section remain
+- [ ] **v1.0 — packaging.** One-command setup (`make setup`), CI (lint/typecheck/test on every
+      push), and a PyPI release pipeline (tag-triggered, trusted publishing) are in place as
+      `py-phenoforge`; docs and a validation and limitations section remain
 
 Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
 demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.
@@ -176,6 +183,20 @@ independently.
 bundled demo cohorts. Everything from `expand_hierarchy` and `search_concepts` is `generated`
 provenance — ungrounded, structural or lexical/semantic only, and meant to be confirmed by a
 human before use in a cohort definition.
+
+## Releasing
+
+`.github/workflows/publish.yml` builds and publishes to PyPI on any `v*.*.*` tag push, via
+[PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC — no stored API
+token). One-time setup, done outside this repo:
+
+1. On PyPI: Account settings → Publishing → add a pending publisher for `py-phenoforge`,
+   repository `colbyw5/phenoforge`, workflow `publish.yml`, environment `pypi`.
+2. On GitHub: Settings → Environments → create an environment named `pypi` (optionally with
+   required reviewers, for a manual approval gate before each publish).
+
+To cut a release: bump `version` in `pyproject.toml`, commit, then `git tag v0.1.0 && git push
+origin v0.1.0`.
 
 ## License
 
