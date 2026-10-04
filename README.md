@@ -1,5 +1,7 @@
 # phenoforge
 
+[![CI](https://github.com/colbyw5/phenoforge/actions/workflows/ci.yml/badge.svg)](https://github.com/colbyw5/phenoforge/actions/workflows/ci.yml)
+
 > Semantic value set assembly for clinical cohort definitions, over MCP.
 
 **Status: early prototype.** The vocabulary loader, hierarchy expansion, hybrid (BM25 + dense)
@@ -27,6 +29,11 @@ uv sync
 python scripts/load_vocab.py data/athena --output data/vocab.duckdb
 phenoforge-mcp  # stdio MCP server; add to Claude Desktop's mcpServers config to try it
 ```
+
+Or, once the Athena download is in place, `make setup` chains install + every optional data-build
+step below (vocab, phenotype library, dense index) in one call. `make check` runs lint, type
+checks, and the full test suite — the same checks CI runs on every push. See the `Makefile` for
+the full target list.
 
 ### Optional: curated phenotype library
 
@@ -141,7 +148,8 @@ and the agent are independent consumers of the same engine.
 - [x] **v0.7 — LangGraph agent.** Decompose → check curated first → generate only for
       unresolved terms → human confirmation gate on anything generated → assemble. Real
       interactive CLI (`scripts/run_agent.py`)
-- [ ] **v1.0 — packaging.** PyPI, docs, validation and limitations section
+- [ ] **v1.0 — packaging.** One-command setup (`make setup`) and CI (lint/typecheck/test on
+      every push) are in place; PyPI, docs, and a validation and limitations section remain
 
 Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
 demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.
