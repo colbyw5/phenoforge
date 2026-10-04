@@ -156,6 +156,12 @@ demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may r
 
 Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains
 
+Watching: [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a
+schema-constrained "System One Model" that could fit the `decompose` node's structured-output
+call. Early access/waitlist, proprietary, no independent benchmarks yet as of 2026-10 — not
+adopted; revisit if it leaves early access and the latency/cost tradeoff is verified
+independently.
+
 ## Tools
 
 | Tool | Status | Purpose |
