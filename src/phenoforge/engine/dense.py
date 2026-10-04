@@ -70,7 +70,10 @@ def default_embedder() -> EmbedFn:
     model = SentenceTransformer(_BIOLORD_MODEL)
 
     def embed(texts: list[str]) -> list[list[float]]:
-        return model.encode(texts, show_progress_bar=False, normalize_embeddings=True).tolist()
+        vectors: list[list[float]] = model.encode(
+            texts, show_progress_bar=False, normalize_embeddings=True
+        ).tolist()
+        return vectors
 
     return embed
 
@@ -146,7 +149,7 @@ class DenseRetriever:
             an ephemeral in-memory index is built instead.
         """
         self._embed_fn = embed_fn or default_embedder()
-        self._table = None
+        self._table: Any = None
 
         if index_path is not None and index_path.exists():
             try:

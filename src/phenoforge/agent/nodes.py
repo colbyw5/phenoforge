@@ -74,8 +74,16 @@ def default_decomposer(model: str = "claude-sonnet-5") -> DecomposeFn:
     from langchain_anthropic import ChatAnthropic
 
     # temperature is deprecated for claude-sonnet-5 and newer — omitted
-    # rather than pinned to a value that would raise a 400.
-    llm = ChatAnthropic(model=model).with_structured_output(DecomposedTerms)
+    # rather than pinned to a value that would raise a 400. model_name is
+    # the field's actual name; "model" is only a populate-by-name alias
+    # that the installed version's synthesized __init__ stub doesn't expose.
+    # timeout/stop are genuinely optional (Field(None, alias=...) in
+    # langchain_anthropic) but pydantic's mypy plugin mis-synthesizes
+    # aliased fields with a positional default as required kwargs — a
+    # known plugin limitation, not a real missing argument.
+    llm = ChatAnthropic(model_name=model).with_structured_output(  # type: ignore[call-arg]
+        DecomposedTerms
+    )
 
     def decompose(population_description: str) -> list[str]:
         result = llm.invoke(
@@ -84,7 +92,8 @@ def default_decomposer(model: str = "claude-sonnet-5") -> DecomposeFn:
                 ("human", population_description),
             ]
         )
-        return result.terms  # type: ignore[union-attr]
+        assert isinstance(result, DecomposedTerms)
+        return result.terms
 
     return decompose
 

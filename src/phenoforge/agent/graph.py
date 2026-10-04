@@ -102,7 +102,7 @@ def build_graph(
     decompose_fn: DecomposeFn | None = None,
     dense: DenseRetriever | None = None,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
-) -> CompiledStateGraph:
+) -> CompiledStateGraph[Any, Any, Any, Any]:
     """Build and compile the cohort-assembly graph.
 
     :param con: Open connection to ``vocab.duckdb``, bound into
