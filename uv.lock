@@ -3008,7 +3008,7 @@ wheels = [
 
 [[package]]
 name = "py-phenoforge"
-version = "0.1.0.dev0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
