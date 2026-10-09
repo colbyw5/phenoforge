@@ -91,6 +91,13 @@ python scripts/run_eval.py                                 # bm25 + expand_desce
 python scripts/run_eval.py --index data/concept_index.lance # + dense + hybrid
 ```
 
+Separately, `scripts/eval_decomposition.py` scores the agent's `decompose` step itself (needs
+`ANTHROPIC_API_KEY` and the `agent` extra — see Validation and limitations below):
+
+```bash
+python scripts/eval_decomposition.py --index data/concept_index.lance
+```
+
 ### Optional: the agent
 
 The LangGraph agent decomposes a plain-English population description into seed terms, checks
@@ -223,12 +230,21 @@ What this does and doesn't establish:
   coverage) — the system errs toward casting a wide net and relying on human review to reject
   false positives, not toward silently missing codes. Anyone using the `generated` tier should
   expect to reject a meaningful fraction of what it returns, not rubber-stamp it.
-- **Decomposition has no quantitative evaluation at all.** The agent's `decompose` node (a real
-  Claude call turning a population description into seed terms) has been exercised on exactly
-  one worked example end-to-end (see `notebooks/agent_walkthrough.ipynb`), not benchmarked
-  against a labeled set of population descriptions. Its error rate on descriptions unlike that
-  example — ambiguous phrasing, multiple unrelated conditions, qualifiers it should drop — is
-  unknown.
+- **Decomposition's measured effect is highly case-dependent, not uniformly good or bad.**
+  `scripts/eval_decomposition.py` (`phenoforge.eval.decomposition`) compares, per bundled
+  cohort, "hybrid search using the cohort's own name directly" against "the real `decompose`
+  step, then per-term resolution" — same ground truth, isolating what decomposition costs or
+  saves. Across 8 cases (phrasing drawn from real ClinicalTrials.gov titles/inclusion criteria,
+  not this project's own wording), the mean gap is **+0.019** — roughly a wash on average — but
+  individual cases range from **-0.574** (decomposition much better: a single unambiguous
+  curated hit, e.g. chronic kidney disease, 0.426 → 1.000) to **+0.637** (decomposition much
+  worse). The worst case is informative: the bundled library has three near-duplicate "type 2
+  diabetes" cohorts (ids `40`, `288`, `503`); when a decomposed term is generic enough to match
+  more than one of them, `find_curated_definition` deliberately refuses to guess and falls
+  through to ungrounded `generated` retrieval instead (by design — see its docstring) — losing
+  specificity the cohort's own longer display name carried. So decomposition isn't broken, but
+  it can silently lose precision specifically where the curated library has near-duplicate
+  entries for the same condition under a generic name.
 - **Curated-tier coverage is narrow by construction.** Only 8 cohorts are bundled; any
   population description outside them falls through entirely to the unverified `generated`
   tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops concepts whose fan-out
