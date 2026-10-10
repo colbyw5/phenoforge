@@ -284,9 +284,10 @@ def _build_cohort_membership(
     """Resolve every bundled cohort and index which cohorts contain each concept.
 
     Re-resolves all cohorts on every call rather than caching — at the
-    bundled demo library's scale (8 cohorts, small JSON files) this is
-    cheap, and caching would need invalidation the moment
-    ``fetch_phenotype_library.py`` re-runs. Revisit if the library grows.
+    bundled demo library's scale (dozens of cohorts, small JSON files)
+    this is cheap, and caching would need invalidation the moment
+    ``fetch_phenotype_library.py`` re-runs. Revisit if the library grows
+    by orders of magnitude.
 
     :param con: Open connection to ``vocab.duckdb``.
     :param library_dir: Directory of fetched OHDSI Phenotype Library cohorts.

@@ -195,9 +195,9 @@ def find_curated_definition(query: str) -> ConceptSet:
     — a match here is ``curated`` provenance, safe to use as-is citing the
     cohort id. Only fall back to ``search_concepts``/``expand_hierarchy`` if
     nothing matches; those return ``generated`` provenance requiring human
-    confirmation. This demo bundles a small, hand-picked set of
-    diabetes/kidney-related cohorts, not the full library — a miss here
-    does not mean no curated definition exists.
+    confirmation. This demo bundles a small, hand-picked set of cohorts
+    spanning several disease areas, not the full ~1,100-cohort library —
+    a miss here does not mean no curated definition exists.
 
     :param query: Free-text population description.
     :returns: The best-matching cohort's resolved ICD-10-CM concepts tagged

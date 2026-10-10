@@ -6,9 +6,15 @@ verified grant for the cohort JSON content itself). Following the same
 instinct already applied to the Athena vocabulary download: fetch into a
 gitignored local directory, never commit the content to this repo.
 
-Cohort ids below are a hand-picked demo set (diabetes/kidney-relevant,
-matching the README's own population-description example), not the full
-library — see README for the full list and rationale.
+Cohort ids below are a hand-picked demo set spanning several disease areas
+(cardiovascular, respiratory, mental health, musculoskeletal, neurological,
+infectious, GI, hepatic, metabolic, plus the original diabetes/kidney
+cluster), not the full ~1,100-cohort library — see README for the full list
+and rationale. Picked from the library's own ``inst/Cohorts.csv`` index,
+preferring entries tagged ``[P][R]`` to match the quality tier of the
+original diabetes/kidney set (none of this library's cohorts carry a
+"peer-reviewed" status as of this writing — see README's Validation and
+limitations section).
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ app = typer.Typer(add_completion=False)
 _RAW_BASE = "https://raw.githubusercontent.com/OHDSI/PhenotypeLibrary/main/inst/cohorts"
 
 _COHORT_NAMES = {
+    # Diabetes / kidney (original set)
     40: "Diabetes Mellitus Type 2 or history of diabetes",
     288: "Type 2 Diabetes Mellitus indexed on diagnosis/treatment/lab",
     503: "Type 2 diabetes mellitus",
@@ -33,6 +40,29 @@ _COHORT_NAMES = {
     619: "Gestational diabetes mellitus",
     647: "Retinopathy due to diabetes mellitus",
     687: "Chronic kidney disease",
+    # Cardiovascular
+    510: "Acute myocardial infarction",
+    513: "Atrial fibrillation",
+    519: "Heart failure",
+    # Respiratory
+    507: "Pneumonia",
+    521: "Asthma",
+    # Mental health
+    594: "Depressive disorder",
+    602: "Anxiety",
+    # Musculoskeletal / autoimmune
+    457: "Rheumatoid arthritis",
+    # Neurological
+    549: "Epilepsy",
+    524: "Migraine",
+    # Infectious
+    463: "Sepsis",
+    # Gastrointestinal / hepatic
+    775: "First Inflammatory Bowel Disease",
+    626: "Cirrhosis of liver",
+    # Metabolic
+    558: "Hyperlipidemia",
+    563: "Obesity",
 }
 _COHORT_IDS = list(_COHORT_NAMES)
 

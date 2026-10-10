@@ -66,8 +66,12 @@ it's fetched into a gitignored local directory, never committed to this repo. Wi
 python scripts/fetch_phenotype_library.py  # writes data/phenotype_library/
 ```
 
-Bundles 8 hand-picked, diabetes/kidney-relevant cohorts (not the full library): Type 2/Type 1/
-gestational diabetes, diabetic ketoacidosis, retinopathy, and chronic kidney disease.
+Bundles 23 hand-picked cohorts (not the full ~1,100-cohort library), spanning: diabetes (type
+2/type 1/gestational, ketoacidosis, retinopathy), chronic kidney disease, cardiovascular (MI,
+atrial fibrillation, heart failure), respiratory (pneumonia, asthma), mental health (depression,
+anxiety), rheumatoid arthritis, neurological (epilepsy, migraine), sepsis, inflammatory bowel
+disease, cirrhosis, hyperlipidemia, and obesity. See `scripts/fetch_phenotype_library.py` for
+exact cohort ids and selection rationale.
 
 ### Optional: dense (semantic) search
 
@@ -209,48 +213,58 @@ human before use in a cohort definition.
 ## Validation and limitations
 
 The only quantitative evaluation that exists is `scripts/run_eval.py` scoring each retrieval
-method against the 8 bundled OHDSI Phenotype Library demo cohorts (diabetes/kidney-relevant) as
-ground truth. Current numbers on that set:
+method against the 23 bundled OHDSI Phenotype Library demo cohorts (spanning diabetes/kidney,
+cardiovascular, respiratory, mental health, and more — see Setup) as ground truth. Current
+numbers on that set:
 
 | method | coverage | over-inclusion | hierarchical |
 |---|---|---|---|
-| `bm25` | 0.625 | 0.367 | 0.535 |
-| `expand_descendants` | 0.645 | 0.138 | 0.697 |
-| `dense` | 0.850 | 0.528 | 0.586 |
-| `hybrid` (0.5/0.5) | 0.858 | 0.399 | 0.692 |
+| `bm25` | 0.759 | 0.441 | 0.589 |
+| `expand_descendants` | 0.635 | 0.122 | 0.667 |
+| `dense` | 0.828 | 0.541 | 0.577 |
+| `hybrid` (0.5/0.5) | 0.873 | 0.480 | 0.634 |
+
+(Earlier, measured against only the original 8 diabetes/kidney cohorts: `bm25` 0.535,
+`expand_descendants` 0.697, `dense` 0.586, `hybrid` 0.692 hierarchical. Every method's
+hierarchical score moved when the set broadened — `hybrid` down from 0.692 to 0.634,
+`expand_descendants` down from 0.697 to 0.667 — concrete evidence that the original 8-cohort
+numbers were narrower than they looked, not a general ICD-10-CM retrieval benchmark.)
 
 What this does and doesn't establish:
 
-- **8 cohorts, one disease area.** This is not a general benchmark. It says nothing about
-  performance outside diabetes/kidney conditions, rare diseases, or codes with sparse/ambiguous
-  natural-language descriptions. Treat every number above as specific to this narrow slice, not
-  as a claim about ICD-10-CM retrieval in general.
+- **23 cohorts across several disease areas — still not a general benchmark.** Broadening past
+  diabetes/kidney measurably moved every method's score (above), which is itself the point: a
+  benchmark this size is sensitive to exactly which conditions are in it. It says nothing about
+  performance on conditions still absent from the set, rare diseases, or codes with sparse/
+  ambiguous natural-language descriptions.
 - **Over-inclusion is the dominant error mode, not coverage.** Every method pulls in more
-  codes than the curated ground truth (dense especially: 0.528 over-inclusion against 0.850
-  coverage) — the system errs toward casting a wide net and relying on human review to reject
-  false positives, not toward silently missing codes. Anyone using the `generated` tier should
-  expect to reject a meaningful fraction of what it returns, not rubber-stamp it.
+  codes than the curated ground truth (dense and hybrid worst: ~0.48-0.54 over-inclusion
+  against ~0.83-0.87 coverage) — the system errs toward casting a wide net and relying on human
+  review to reject false positives, not toward silently missing codes. Anyone using the
+  `generated` tier should expect to reject a meaningful fraction of what it returns, not
+  rubber-stamp it.
 - **Decomposition's measured effect is highly case-dependent, not uniformly good or bad.**
   `scripts/eval_decomposition.py` (`phenoforge.eval.decomposition`) compares, per bundled
   cohort, "hybrid search using the cohort's own name directly" against "the real `decompose`
   step, then per-term resolution" — same ground truth, isolating what decomposition costs or
-  saves. Across 8 cases (phrasing drawn from real ClinicalTrials.gov titles/inclusion criteria,
-  not this project's own wording), the mean gap is **+0.019** — roughly a wash on average — but
-  individual cases range from **-0.574** (decomposition much better: a single unambiguous
-  curated hit, e.g. chronic kidney disease, 0.426 → 1.000) to **+0.637** (decomposition much
-  worse). The worst case is informative: the bundled library has three near-duplicate "type 2
-  diabetes" cohorts (ids `40`, `288`, `503`); when a decomposed term is generic enough to match
-  more than one of them, `find_curated_definition` deliberately refuses to guess and falls
-  through to ungrounded `generated` retrieval instead (by design — see its docstring) — losing
-  specificity the cohort's own longer display name carried. So decomposition isn't broken, but
-  it can silently lose precision specifically where the curated library has near-duplicate
-  entries for the same condition under a generic name.
-- **Curated-tier coverage is narrow by construction.** Only 8 cohorts are bundled; any
-  population description outside them falls through entirely to the unverified `generated`
-  tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops concepts whose fan-out
-  exceeds a configurable threshold (`find_high_fanout_snomed_concepts`) rather than including
-  everything — a real cohort definition can lose codes this way, and the demo cohorts above may
-  not exercise that path.
+  saves. Across the 8 diabetes/kidney test cases this currently covers (phrasing drawn from
+  real ClinicalTrials.gov titles/inclusion criteria, not this project's own wording; re-run
+  twice, mean gap **+0.019** and **+0.020** — stable, not a sampling fluke), individual cases
+  range from **-0.574** (decomposition much better: a single unambiguous curated hit, e.g.
+  chronic kidney disease, 0.426 → 1.000) to **+0.637** (decomposition much worse). The worst
+  case is informative: the bundled library has three near-duplicate "type 2 diabetes" cohorts
+  (ids `40`, `288`, `503`); when a decomposed term is generic enough to match more than one of
+  them, `find_curated_definition` deliberately refuses to guess and falls through to ungrounded
+  `generated` retrieval instead (by design — see its docstring) — losing specificity the
+  cohort's own longer display name carried. So decomposition isn't broken, but it can silently
+  lose precision specifically where the curated library has near-duplicate entries for the same
+  condition under a generic name. (The other 15 newly-added cohorts don't yet have decomposition
+  test cases — this eval's coverage is narrower than the retrieval eval's.)
+- **Curated-tier coverage is still narrow by construction.** 23 cohorts out of the library's
+  ~1,100 are bundled; any population description outside them falls through entirely to the
+  unverified `generated` tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops
+  concepts whose fan-out exceeds a configurable threshold (`find_high_fanout_snomed_concepts`)
+  rather than including everything — a real cohort definition can lose codes this way.
 - **No scale or concurrency testing.** Built and measured against one developer's own Athena
   download on one machine. No data on index build time, query latency, or memory at a larger
   vocabulary, or under concurrent MCP clients.
