@@ -1,9 +1,9 @@
-"""Tests for phenoforge.engine.hybrid.reciprocal_rank_fusion. Pure function, no DB."""
+"""Tests for phenoforge.engine.hybrid: reciprocal_rank_fusion (pure) and hybrid_search."""
 
 from __future__ import annotations
 
-from phenoforge.engine.hybrid import reciprocal_rank_fusion
-from phenoforge.engine.models import ConceptWithProvenance, ProvenanceTier
+from phenoforge.engine.hybrid import hybrid_search, reciprocal_rank_fusion
+from phenoforge.engine.models import ConceptWithProvenance, ProvenanceTier, UnmappableTerm
 
 
 def _concept(concept_id: int, code: str, source: str) -> ConceptWithProvenance:
@@ -103,3 +103,73 @@ def test_higher_weight_promotes_that_lists_top_result() -> None:
 
     ids = [c.concept_id for c in fused]
     assert ids.index(3) < ids.index(2)
+
+
+class _StubRetriever:
+    """Duck-typed stand-in for BM25Retriever/DenseRetriever: returns a fixed
+    ranked list, sliced to whatever ``k`` it's asked for, and records every
+    ``k`` it was called with so tests can assert on it directly."""
+
+    def __init__(self, items: list[ConceptWithProvenance], source_prefix: str) -> None:
+        self._items = items
+        self._source_prefix = source_prefix
+        self.calls: list[int] = []
+
+    def search(
+        self, query: str, k: int = 10, min_score: float = 0.0
+    ) -> tuple[list[ConceptWithProvenance], UnmappableTerm | None]:
+        self.calls.append(k)
+        return self._items[:k], None
+
+
+def test_hybrid_search_default_candidate_k_couples_pool_to_output() -> None:
+    """Undocumented-until-now original behavior, kept as the default for
+    backward compatibility: with candidate_k omitted, both sub-retrievers
+    are searched exactly k-deep — the same k controls both "how many
+    results come back" and "how deep each retriever searches"."""
+    bm25 = _StubRetriever([_concept(i, str(i), "bm25:q") for i in range(20)], "bm25")
+    dense = _StubRetriever([_concept(i, str(i), "dense:q") for i in range(20)], "dense")
+
+    hybrid_search(bm25, dense, "q", k=7)  # type: ignore[arg-type]
+
+    assert bm25.calls == [7]
+    assert dense.calls == [7]
+
+
+def test_hybrid_search_explicit_candidate_k_decouples_pool_from_output() -> None:
+    """Real case this was found from: the same concept's fused rank shifted
+    depending on k alone, because widening k also silently widened the
+    candidate pool. Concept 50 ranks only #15 in bm25 but #0 in dense — at
+    a shallow k=5 pool it never enters bm25's considered set at all, so it
+    scores on dense alone; once candidate_k is widened past 15, bm25's
+    contribution kicks in too and its *combined* score changes. Output
+    length still respects k, proving the two are now independent."""
+    bm25_items = [_concept(i, str(i), "bm25:q") for i in range(15)] + [_concept(50, "50", "bm25:q")]
+    dense_items = [_concept(50, "50", "dense:q")] + [
+        _concept(i, str(i), "dense:q") for i in range(15)
+    ]
+    bm25 = _StubRetriever(bm25_items, "bm25")
+    dense = _StubRetriever(dense_items, "dense")
+
+    shallow, _ = hybrid_search(bm25, dense, "q", k=5)  # type: ignore[arg-type]
+    assert bm25.calls == [5] and dense.calls == [5]
+    shallow_score_source = next(c for c in shallow if c.concept_id == 50).source
+    assert shallow_score_source == "dense:q"  # bm25 never saw it at this depth
+
+    bm25.calls.clear()
+    dense.calls.clear()
+    deep, _ = hybrid_search(bm25, dense, "q", k=5, candidate_k=20)  # type: ignore[arg-type]
+    assert bm25.calls == [20] and dense.calls == [20]
+    assert len(deep) == 5  # output size still respects k, not candidate_k
+
+
+def test_hybrid_search_bm25_only_respects_k_despite_deeper_candidate_pool() -> None:
+    """dense=None with an explicit candidate_k > k must not leak extra
+    results past k — the pre-fix code had no truncation here because
+    bm25.search(k=k) and the final output size were always identical."""
+    bm25 = _StubRetriever([_concept(i, str(i), "bm25:q") for i in range(20)], "bm25")
+
+    fused, _ = hybrid_search(bm25, None, "q", k=5, candidate_k=20)  # type: ignore[arg-type]
+
+    assert bm25.calls == [20]
+    assert len(fused) == 5

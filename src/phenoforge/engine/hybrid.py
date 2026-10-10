@@ -76,6 +76,7 @@ def hybrid_search(
     query: str,
     k: int = 10,
     dense_weight: float = 0.5,
+    candidate_k: int | None = None,
 ) -> tuple[list[ConceptWithProvenance], UnmappableTerm | None]:
     """Search using BM25 and, if available, dense retrieval, fused by RRF.
 
@@ -88,7 +89,7 @@ def hybrid_search(
     :param bm25: A built BM25 retriever.
     :param dense: A built dense retriever, or ``None`` to search lexically only.
     :param query: Free-text search string.
-    :param k: Maximum number of results to return.
+    :param k: Maximum number of fused results to return.
     :param dense_weight: Dense's share of the fused RRF score, in ``[0, 1]``;
         BM25 gets ``1 - dense_weight``. ``0.5`` (equal weight) matches this
         function's original, unweighted behavior — uniform scaling of both
@@ -97,21 +98,34 @@ def hybrid_search(
         ``None``. See ``scripts/sweep_hybrid_weights.py`` for measuring
         whether a different value scores better against curated ground
         truth before changing this default.
+    :param candidate_k: How many results each sub-retriever searches
+        *before* fusion, independent of ``k`` (how many fused results come
+        back). Defaults to ``k`` itself — the original, coupled behavior,
+        a strict no-op for existing callers. Found and fixed via a real
+        case: with the coupled behavior, the same concept's fused rank
+        changed depending on ``k`` alone (e.g. #10 at ``k=10`` vs. #14 at
+        ``k=25``), because widening ``k`` silently also widened the
+        candidate pool competing for every rank, not just how many results
+        were returned. Pass an explicit, fixed ``candidate_k`` whenever
+        comparing a concept's rank across calls with different ``k``
+        (e.g. :func:`~phenoforge.engine.explain.explain_inclusion`'s
+        evidence) to keep that comparison meaningful.
     :returns: A tuple of (fused, deduplicated results ordered by combined
         relevance; an :class:`~phenoforge.engine.models.UnmappableTerm` if
         nothing matched, else ``None``).
     :rtype: tuple[list[ConceptWithProvenance], UnmappableTerm | None]
     """
-    bm25_results, bm25_unmappable = bm25.search(query, k=k)
+    pool = candidate_k if candidate_k is not None else k
+    bm25_results, bm25_unmappable = bm25.search(query, k=pool)
     if dense is not None:
-        dense_results, _ = dense.search(query, k=k)
+        dense_results, _ = dense.search(query, k=pool)
         fused = reciprocal_rank_fusion(
             [bm25_results, dense_results],
             k=k,
             weights=[1.0 - dense_weight, dense_weight],
         )
     else:
-        fused = bm25_results
+        fused = bm25_results[:k]
 
     if not fused:
         return [], bm25_unmappable or UnmappableTerm(term=query, reason="no match above threshold")
