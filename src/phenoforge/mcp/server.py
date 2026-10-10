@@ -22,6 +22,8 @@ from phenoforge.engine.curated import find_curated_definition as _find_curated_d
 from phenoforge.engine.db import DEFAULT_VOCAB_DB_PATH, connect
 from phenoforge.engine.dense import DenseRetriever, EmbedFn
 from phenoforge.engine.expansion import expand_descendants
+from phenoforge.engine.explain import InclusionExplanation
+from phenoforge.engine.explain import explain_inclusion as _explain_inclusion
 from phenoforge.engine.hybrid import hybrid_search
 from phenoforge.engine.lookup import lookup_by_code
 from phenoforge.engine.models import Concept, ConceptSet
@@ -208,6 +210,42 @@ def find_curated_definition(query: str) -> ConceptSet:
     """
     return _find_curated_definition(
         _get_connection(), query, _library_dir, _get_retriever(), _get_dense_retriever()
+    )
+
+
+@mcp.tool()
+def explain_inclusion(
+    concept_code: str, query: str | None = None, seed_code: str | None = None
+) -> InclusionExplanation:
+    """Explain why a specific code would be included in a result, via which path.
+
+    Nothing from a prior ``search_concepts``/``find_curated_definition``/
+    ``expand_hierarchy`` call is kept server-side, so this re-runs
+    whichever of those a caller would have made and reports whether
+    ``concept_code`` actually comes back — pass ``query`` to check the
+    curated and free-text search paths, ``seed_code`` to check the
+    hierarchy-expansion path, or both to check everything at once. Useful
+    for auditing a `generated` candidate before confirming it, or for
+    double-checking why a `curated` code is in a cohort.
+
+    :param concept_code: An exact ICD-10-CM code to explain, e.g. ``"E11.21"``.
+    :param query: Free-text population description or clinical term, to
+        check the same paths ``find_curated_definition``/``search_concepts``
+        would use.
+    :param seed_code: An exact ICD-10-CM code, to check the same hierarchy
+        path ``expand_hierarchy`` would use.
+    :returns: Every path that actually produced ``concept_code``; empty
+        ``paths`` if none did, including if the code doesn't exist.
+    :rtype: InclusionExplanation
+    """
+    return _explain_inclusion(
+        _get_connection(),
+        concept_code,
+        _get_retriever(),
+        _library_dir,
+        dense=_get_dense_retriever(),
+        query=query,
+        seed_code=seed_code,
     )
 
 

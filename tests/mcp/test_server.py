@@ -141,6 +141,19 @@ def test_find_curated_definition_stale_manifest_entry(
     assert "no bundled cohort matches" in result.unmappable[0].reason
 
 
+def test_explain_inclusion_tool(mini_vocab: MiniVocab) -> None:
+    result = server.explain_inclusion("E11.21", seed_code="E11")
+
+    assert result.concept_name == "Type 2 diabetes mellitus with diabetic nephropathy"
+    assert any(p.source == "hierarchy_expansion:E11" for p in result.paths)
+
+
+def test_explain_inclusion_tool_no_match(mini_vocab: MiniVocab) -> None:
+    result = server.explain_inclusion("E11.21", query="xyzzy plugh quux")
+
+    assert result.paths == []
+
+
 def test_configure_explicit_none_resets_to_default(mini_vocab: MiniVocab, tmp_path: Path) -> None:
     from tests.engine.fake_embedder import fake_embed_fn
 

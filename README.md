@@ -203,7 +203,7 @@ independently.
 | `expand_hierarchy` | done | Seed code → full descendant expansion (`generated` provenance) |
 | `search_concepts` | done | Hybrid BM25 + dense search over ICD-10-CM names, RRF-fused (`generated` provenance); falls back to BM25-only if no dense index is built |
 | `find_curated_definition` | done | Search the bundled OHDSI Phenotype Library demo set before generating anything (`curated` provenance) |
-| `explain_inclusion` | planned | Why is this code in this set, via which path, with what evidence |
+| `explain_inclusion` | done | Why a code would be included, via which path(s), with what evidence — re-derives rather than reading back state, since nothing persists server-side |
 
 `find_curated_definition` is the only source of `curated` provenance today, and only for the 8
 bundled demo cohorts. Everything from `expand_hierarchy` and `search_concepts` is `generated`

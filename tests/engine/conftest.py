@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from phenoforge.engine.db import connect
+from tests.eval.conftest import library_dir  # noqa: F401  (re-exported fixture)
 from tests.scripts.conftest import MiniVocab, mini_vocab  # noqa: F401  (re-exported fixture)
 
 
