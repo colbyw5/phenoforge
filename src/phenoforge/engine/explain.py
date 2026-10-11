@@ -95,7 +95,17 @@ def explain_inclusion(
     :param seed_code: ICD-10-CM seed code to check the hierarchy-expansion
         path against.
     :param fanout_threshold: Passed through to curated resolution.
-    :param k: Result count passed to curated/generated retrieval calls.
+    :param k: How deep to search for ``concept_code`` on the curated and
+        generated paths — passed to :func:`~phenoforge.engine.hybrid.hybrid_search`
+        as both its ``k`` and ``candidate_k`` (this function never
+        truncates a candidate list for display, it only reports one
+        code's presence/rank, so there's no separate "how many to return"
+        concern the way there is for ``hybrid_search``'s own callers — see
+        its docstring). The rank reported in ``evidence`` is the code's
+        position within this many candidates; pass a larger ``k`` to find
+        a code that didn't show up at a shallower search depth, and don't
+        compare ranks from calls with different ``k`` directly, since
+        they describe different-sized pools.
     :returns: Every path that produced ``concept_code``; empty ``paths`` if
         none did, including if the code isn't in the vocabulary at all.
     :rtype: InclusionExplanation
@@ -128,7 +138,7 @@ def explain_inclusion(
                     InclusionPath(
                         tier=ProvenanceTier.GENERATED,
                         source=c.source,
-                        evidence=f"ranked #{rank} of {len(generated)} for query {query!r}",
+                        evidence=f"ranked #{rank} of top {k} candidates for query {query!r}",
                     )
                 )
 

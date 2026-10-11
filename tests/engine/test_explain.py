@@ -45,6 +45,23 @@ def test_explain_inclusion_hierarchy_path(
     assert f"{E11_TO_E11_21_DEPTH} level(s) below" in hierarchy_paths[0].evidence
 
 
+def test_explain_inclusion_k_controls_search_depth(
+    mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, library_dir: Path
+) -> None:
+    """k is a search-depth knob, not an output-size knob here — explain_inclusion
+    never truncates a candidate list for display, it only reports one
+    code's presence/rank, so hybrid_search's k and candidate_k are always
+    set equal. The evidence's "of top {k}" denominator must reflect the
+    actual k passed, not hybrid_search's returned-list length."""
+    bm25 = BM25Retriever(con)
+
+    result = explain_inclusion(con, "E11.21", bm25, library_dir, query="diabetic nephropathy", k=3)
+
+    generated = [p for p in result.paths if p.tier == ProvenanceTier.GENERATED]
+    assert len(generated) == 1
+    assert "of top 3 candidates" in generated[0].evidence
+
+
 def test_explain_inclusion_checks_both_paths_additively(
     mini_vocab: MiniVocab, con: duckdb.DuckDBPyConnection, library_dir: Path
 ) -> None:
