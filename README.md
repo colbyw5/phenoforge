@@ -54,7 +54,8 @@ step below (vocab, phenotype library, dense index) in one call. `make check` run
 checks, and the full test suite — the same checks CI runs on every push. See the `Makefile` for
 the full target list.
 
-### Optional: curated phenotype library
+<details>
+<summary><strong>Optional: curated phenotype library</strong></summary>
 
 `find_curated_definition` needs a small local cache of OHDSI Phenotype Library cohort
 definitions. Like the Athena download, this content carries its own terms — the OHDSI
@@ -74,7 +75,10 @@ anxiety), rheumatoid arthritis, neurological (epilepsy, migraine), sepsis, infla
 disease, cirrhosis, hyperlipidemia, and obesity. See `scripts/fetch_phenotype_library.py` for
 exact cohort ids and selection rationale.
 
-### Optional: dense (semantic) search
+</details>
+
+<details>
+<summary><strong>Optional: dense (semantic) search</strong></summary>
 
 `search_concepts` fuses lexical and semantic matching when a dense index has been built;
 without one, it falls back to lexical-only search automatically.
@@ -83,7 +87,10 @@ without one, it falls back to lexical-only search automatically.
 python scripts/build_index.py  # writes data/concept_index.lance; downloads BioLORD-2023 on first run
 ```
 
-### Optional: eval harness
+</details>
+
+<details>
+<summary><strong>Optional: eval harness</strong></summary>
 
 Scores each retrieval method (BM25, dense, hybrid, hierarchy expansion) against the curated
 demo cohorts as ground truth — hierarchical distance-weighted scoring, set-level coverage, and
@@ -103,7 +110,10 @@ Separately, `scripts/eval_decomposition.py` scores the agent's `decompose` step 
 python scripts/eval_decomposition.py --index data/concept_index.lance
 ```
 
-### Optional: the agent
+</details>
+
+<details>
+<summary><strong>Optional: the agent</strong></summary>
 
 The LangGraph agent decomposes a plain-English population description into seed terms, checks
 each against the curated phenotype library first, and pauses on the command line for you to
@@ -119,7 +129,10 @@ python scripts/run_agent.py "adults with type 2 diabetes and diabetic nephropath
 python scripts/run_agent.py "..." --index data/concept_index.lance  # + dense retrieval for generated candidates
 ```
 
-### Optional: API docs
+</details>
+
+<details>
+<summary><strong>Optional: API docs</strong></summary>
 
 Hosted at [colbyw5.github.io/phenoforge](https://colbyw5.github.io/phenoforge/), rebuilt on
 every push to `main`. To build locally instead:
@@ -128,7 +141,10 @@ every push to `main`. To build locally instead:
 make docs  # writes docs/_build/index.html
 ```
 
-### Interactive exploration
+</details>
+
+<details>
+<summary><strong>Optional: interactive exploration (notebooks)</strong></summary>
 
 Both notebooks are exploration only, never pushed to production — reusable logic stays in
 `src/phenoforge/`.
@@ -142,6 +158,8 @@ Both notebooks are exploration only, never pushed to production — reusable log
 uv sync --extra dev
 jupyter lab notebooks/explore.ipynb
 ```
+
+</details>
 
 ## What it does
 
@@ -174,7 +192,8 @@ no vocabulary.
 Three layers — a retrieval engine, a thin MCP server, and a LangGraph agent. The MCP server
 and the agent are independent consumers of the same engine.
 
-## Roadmap
+<details>
+<summary><strong>Roadmap</strong></summary>
 
 - [x] **v0.1 — vocabulary layer.** Athena loader, DuckDB schema, hierarchy queries
 - [x] **v0.2 — retrieval.** BM25, BioLORD-2023 embeddings, LanceDB index, RRF hybrid scoring
@@ -205,7 +224,10 @@ call. Early access/waitlist, proprietary, no independent benchmarks yet as of 20
 adopted; revisit if it leaves early access and the latency/cost tradeoff is verified
 independently.
 
-## Tools
+</details>
+
+<details>
+<summary><strong>Tools</strong></summary>
 
 | Tool | Status | Purpose |
 |------|--------|---------|
@@ -215,12 +237,15 @@ independently.
 | `find_curated_definition` | done | Search the bundled OHDSI Phenotype Library demo set before generating anything (`curated` provenance) |
 | `explain_inclusion` | done | Why a code would be included, via which path(s), with what evidence — re-derives rather than reading back state, since nothing persists server-side |
 
-`find_curated_definition` is the only source of `curated` provenance today, and only for the 8
+`find_curated_definition` is the only source of `curated` provenance today, and only for the 23
 bundled demo cohorts. Everything from `expand_hierarchy` and `search_concepts` is `generated`
 provenance — ungrounded, structural or lexical/semantic only, and meant to be confirmed by a
 human before use in a cohort definition.
 
-## Validation and limitations
+</details>
+
+<details>
+<summary><strong>Validation and limitations</strong></summary>
 
 The only quantitative evaluation that exists is `scripts/run_eval.py` scoring each retrieval
 method against the 23 bundled OHDSI Phenotype Library demo cohorts (spanning diabetes/kidney,
@@ -283,7 +308,10 @@ What this does and doesn't establish:
   records who approved what or persists decisions across runs — each CLI invocation starts a
   fresh thread with no memory of past confirmations.
 
-## Releasing
+</details>
+
+<details>
+<summary><strong>Releasing</strong></summary>
 
 `.github/workflows/publish.yml` builds and publishes to PyPI on any `v*.*.*` tag push, via
 [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC — no stored API
@@ -300,6 +328,8 @@ origin v0.1.0`.
 `.github/workflows/docs.yml` builds and deploys the API docs to GitHub Pages on every push to
 `main`. One-time setup: on GitHub, Settings → Pages → set "Source" to "GitHub Actions" (no
 separate environment to create — `deploy-pages` manages the `github-pages` environment itself).
+
+</details>
 
 ## License
 
