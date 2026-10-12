@@ -1,6 +1,7 @@
 # phenoforge
 
 [![CI](https://github.com/colbyw5/phenoforge/actions/workflows/ci.yml/badge.svg)](https://github.com/colbyw5/phenoforge/actions/workflows/ci.yml)
+[![Docs](https://github.com/colbyw5/phenoforge/actions/workflows/docs.yml/badge.svg)](https://colbyw5.github.io/phenoforge/)
 
 > Semantic value set assembly for clinical cohort definitions, over MCP.
 
@@ -118,6 +119,15 @@ python scripts/run_agent.py "adults with type 2 diabetes and diabetic nephropath
 python scripts/run_agent.py "..." --index data/concept_index.lance  # + dense retrieval for generated candidates
 ```
 
+### Optional: API docs
+
+Hosted at [colbyw5.github.io/phenoforge](https://colbyw5.github.io/phenoforge/), rebuilt on
+every push to `main`. To build locally instead:
+
+```bash
+make docs  # writes docs/_build/index.html
+```
+
 ### Interactive exploration
 
 Both notebooks are exploration only, never pushed to production — reusable logic stays in
@@ -179,15 +189,15 @@ and the agent are independent consumers of the same engine.
       interactive CLI (`scripts/run_agent.py`)
 - [x] **v1.0 — packaging.** One-command setup (`make setup`), CI (lint/typecheck/test on every
       push), a PyPI release pipeline (tag-triggered, trusted publishing) as `py-phenoforge`, a
-      zero-setup demo (`make demo`, no account/key/download needed), and a validation and
-      limitations section (see below)
+      zero-setup demo (`make demo`, no account/key/download needed), hosted API docs
+      ([colbyw5.github.io/phenoforge](https://colbyw5.github.io/phenoforge/), built from the
+      same docstrings every function already carries), and a validation and limitations
+      section (see below)
 
 Skipped: `v0.6` (encoder benchmark — BioLORD vs SapBERT vs MedCPT). The agent was the more
 demonstrable deliverable, so `v0.7` was built first; the encoder benchmark may return later.
 
-Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains,
-hosted API reference docs (Sphinx/mkdocs) — docstrings are complete throughout `src/`, just not
-yet published anywhere
+Deferred: literature-derived phenotype algorithms (`published` tier), RxNorm and LOINC domains
 
 Watching: [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a
 schema-constrained "System One Model" that could fit the `decompose` node's structured-output
@@ -286,6 +296,10 @@ token). One-time setup, done outside this repo:
 
 To cut a release: bump `version` in `pyproject.toml`, commit, then `git tag v0.1.0 && git push
 origin v0.1.0`.
+
+`.github/workflows/docs.yml` builds and deploys the API docs to GitHub Pages on every push to
+`main`. One-time setup: on GitHub, Settings → Pages → set "Source" to "GitHub Actions" (no
+separate environment to create — `deploy-pages` manages the `github-pages` environment itself).
 
 ## License
 

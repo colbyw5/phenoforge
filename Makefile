@@ -1,7 +1,12 @@
-.PHONY: install lint format typecheck test check demo build-vocab fetch-library build-index setup clean
+.PHONY: install lint format typecheck test check demo docs build-vocab fetch-library build-index setup clean
 
 install:
 	uv sync --extra agent --extra dev
+
+docs:
+	uv sync --extra agent --extra dev --extra docs
+	rm -rf docs/_build
+	uv run sphinx-build -b html docs docs/_build
 
 # No Athena account, API key, or model download needed — see demo/README.md.
 demo:

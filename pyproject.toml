@@ -38,6 +38,11 @@ Issues = "https://github.com/colbyw5/phenoforge/issues"
 
 [project.optional-dependencies]
 agent = ["langgraph>=0.2", "langchain-anthropic>=0.2", "langsmith>=0.1", "python-dotenv>=1.0"]
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.1.29",
+    "sphinx-autodoc-typehints>=2.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
