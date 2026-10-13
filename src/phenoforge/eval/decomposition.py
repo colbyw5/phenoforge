@@ -116,6 +116,88 @@ DEFAULT_TEST_CASES: list[DecompositionTestCase] = [
         cohort_id="687",
         source="common CKD trial inclusion phrasing framed around a CKD diagnosis",
     ),
+    DecompositionTestCase(
+        population_description="adult patients hospitalized with acute myocardial infarction",
+        cohort_id="510",
+        source=(
+            "common AMI trial phrasing (diagnosis of acute MI, hospitalized within 48h of onset)"
+        ),
+    ),
+    DecompositionTestCase(
+        population_description="adults diagnosed with atrial fibrillation",
+        cohort_id="513",
+        source="common AF trial inclusion phrasing, e.g. ClinicalTrials.gov NCT04357288",
+    ),
+    DecompositionTestCase(
+        population_description="adult patients with a diagnosis of heart failure",
+        cohort_id="519",
+        source="common heart failure trial inclusion phrasing",
+    ),
+    DecompositionTestCase(
+        population_description="adults hospitalized with community-acquired pneumonia",
+        cohort_id="507",
+        source="common CAP trial inclusion phrasing (radiographic infiltrate plus symptoms)",
+    ),
+    DecompositionTestCase(
+        population_description="adults with a physician's diagnosis of asthma",
+        cohort_id="521",
+        source="common asthma trial inclusion phrasing",
+    ),
+    DecompositionTestCase(
+        population_description="adult patients with major depressive disorder",
+        cohort_id="594",
+        source=(
+            'ClinicalTrials.gov NCT00795821, "A Study in Adult Patients With Major '
+            'Depressive Disorder"'
+        ),
+    ),
+    DecompositionTestCase(
+        population_description="adults with generalized anxiety disorder",
+        cohort_id="602",
+        source="common GAD trial inclusion phrasing, e.g. ClinicalTrials.gov NCT03829241",
+    ),
+    DecompositionTestCase(
+        population_description="adult patients with a diagnosis of rheumatoid arthritis",
+        cohort_id="457",
+        source="common RA trial inclusion phrasing (ACR/EULAR 2010 classification criteria)",
+    ),
+    DecompositionTestCase(
+        population_description="adults with a diagnosis of epilepsy",
+        cohort_id="549",
+        source="common epilepsy trial inclusion phrasing",
+    ),
+    DecompositionTestCase(
+        population_description="adults with a history of migraine",
+        cohort_id="524",
+        source="common migraine trial inclusion phrasing (ICHD-3 diagnostic criteria)",
+    ),
+    DecompositionTestCase(
+        population_description=(
+            "adult patients presenting to the emergency department with suspected sepsis"
+        ),
+        cohort_id="463",
+        source="common sepsis trial inclusion phrasing (ED presentation, suspected infection)",
+    ),
+    DecompositionTestCase(
+        population_description="adults with a new diagnosis of inflammatory bowel disease",
+        cohort_id="775",
+        source="common IBD trial inclusion phrasing (Crohn's disease or ulcerative colitis)",
+    ),
+    DecompositionTestCase(
+        population_description="adult patients with a diagnosis of liver cirrhosis",
+        cohort_id="626",
+        source="common cirrhosis trial inclusion phrasing",
+    ),
+    DecompositionTestCase(
+        population_description="adults with a diagnosis of hyperlipidemia",
+        cohort_id="558",
+        source="common hyperlipidemia/dyslipidemia trial inclusion phrasing",
+    ),
+    DecompositionTestCase(
+        population_description="adults with obesity",
+        cohort_id="563",
+        source="common obesity trial inclusion phrasing (BMI-based eligibility)",
+    ),
 ]
 
 

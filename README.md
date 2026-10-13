@@ -278,23 +278,31 @@ What this does and doesn't establish:
   review to reject false positives, not toward silently missing codes. Anyone using the
   `generated` tier should expect to reject a meaningful fraction of what it returns, not
   rubber-stamp it.
-- **Decomposition's measured effect is highly case-dependent, not uniformly good or bad.**
+- **Decomposition now has a test case for every bundled cohort (23/23), and on average it
+  helps rather than hurts — but two real, distinct failure modes showed up along the way.**
   `scripts/eval_decomposition.py` (`phenoforge.eval.decomposition`) compares, per bundled
   cohort, "hybrid search using the cohort's own name directly" against "the real `decompose`
   step, then per-term resolution" — same ground truth, isolating what decomposition costs or
-  saves. Across the 8 diabetes/kidney test cases this currently covers (phrasing drawn from
-  real ClinicalTrials.gov titles/inclusion criteria, not this project's own wording; re-run
-  twice, mean gap **+0.019** and **+0.020** — stable, not a sampling fluke), individual cases
-  range from **-0.574** (decomposition much better: a single unambiguous curated hit, e.g.
-  chronic kidney disease, 0.426 → 1.000) to **+0.637** (decomposition much worse). The worst
-  case is informative: the bundled library has three near-duplicate "type 2 diabetes" cohorts
-  (ids `40`, `288`, `503`); when a decomposed term is generic enough to match more than one of
-  them, `find_curated_definition` deliberately refuses to guess and falls through to ungrounded
-  `generated` retrieval instead (by design — see its docstring) — losing specificity the
-  cohort's own longer display name carried. So decomposition isn't broken, but it can silently
-  lose precision specifically where the curated library has near-duplicate entries for the same
-  condition under a generic name. (The other 15 newly-added cohorts don't yet have decomposition
-  test cases — this eval's coverage is narrower than the retrieval eval's.)
+  saves (phrasing drawn from real ClinicalTrials.gov titles/inclusion criteria, not this
+  project's own wording). Mean gap across the original 8 diabetes/kidney cases was a near-wash
+  (**+0.019**, **+0.020** on rerun); across all 23, it's **-0.209** — decomposition usually
+  *wins*, because a single clean condition name (e.g. "atrial fibrillation") curated-matches
+  better than a cohort's own longer, more clinical display name (e.g. "Diabetes Mellitus Type
+  2 or history of diabetes") did as a search query. Individual cases still range widely:
+    - **Near-duplicate cohorts cause `find_curated_definition` to deliberately refuse to
+      guess.** The library has three "type 2 diabetes" cohorts (`40`, `288`, `503`); a generic
+      decomposed term matching more than one of them falls through to ungrounded `generated`
+      retrieval instead of picking one (by design — see the function's docstring), losing the
+      specificity a longer query carried. Worst case: `+0.637` (cohort `288`).
+    - **A cohort's display name can be misleading relative to what it actually contains.**
+      Cohort `602`, bundled under the name "Anxiety," resolves — via its real SNOMED-to-
+      ICD-10-CM mapping — exclusively to *dementia-with-anxiety* codes (`F01.x4`/`F02.x4`/
+      `F03.x4`), not primary anxiety disorders. The decomposed term `"generalized anxiety
+      disorder"` correctly retrieved the real F41.1 code and its relatives — retrieval worked
+      correctly — but scored `0.000` against ground truth that doesn't actually contain it.
+      This is a curated-library content-quality issue, not a decomposition or retrieval bug,
+      and it likely already depressed `602`'s contribution to the retrieval-only numbers above
+      before this was ever noticed.
 - **Curated-tier coverage is still narrow by construction.** 23 cohorts out of the library's
   ~1,100 are bundled; any population description outside them falls through entirely to the
   unverified `generated` tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops
