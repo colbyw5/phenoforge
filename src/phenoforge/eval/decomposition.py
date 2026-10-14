@@ -248,7 +248,7 @@ def score_decomposition(
     library_dir: Path,
     decompose_fn: DecomposeFn,
     dense: DenseRetriever | None = None,
-    k: int = 25,
+    k: int = 10,
     fanout_threshold: int = 100,
     test_cases: list[DecompositionTestCase] | None = None,
 ) -> DecompositionReport:
@@ -261,7 +261,14 @@ def score_decomposition(
         real Claude call, or a fake for testing.
     :param dense: Pre-built dense retriever, or ``None`` to degrade to
         BM25-only, matching ``search_concepts``'s existing fallback.
-    :param k: Result count passed to each retrieval call.
+    :param k: Result count passed to each retrieval call. Defaults to ``10``
+        to match ``agent/nodes.py``'s ``check_curated``/``generate`` and
+        ``engine/hybrid.hybrid_search``'s own defaults — this function's
+        whole premise is comparing against what the real pipeline does, so
+        its depth has to match that pipeline's, not an arbitrary wider
+        value (a mismatch here previously existed: this defaulted to 25
+        while production defaults to 10, silently measuring a more
+        generous search than what actually ships).
     :param fanout_threshold: Passed through to curated ground-truth loading
         and curated resolution.
     :param test_cases: Cases to run; defaults to :data:`DEFAULT_TEST_CASES`.

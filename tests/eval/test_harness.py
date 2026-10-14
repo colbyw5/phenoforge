@@ -48,6 +48,18 @@ def test_score_cohort_no_predictions(con: duckdb.DuckDBPyConnection) -> None:
     assert result.coverage == 0.0
     assert result.over_inclusion_penalty == 0.0  # vacuous - nothing predicted to penalize
     assert result.hierarchical_score == 0.0
+    assert result.unresolvable_ground_truth == []
+
+
+def test_score_cohort_flags_ground_truth_code_missing_from_vocab(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """A ground-truth code absent from the loaded vocabulary must be
+    flagged, not silently scored as a plain retrieval miss — the two are
+    different problems and were previously indistinguishable."""
+    result = score_cohort(con, "1", "test cohort", ["E11.21", "Z999.999"], ["E11.21"], "test")
+    assert result.unresolvable_ground_truth == ["Z999.999"]
+    assert result.coverage == 0.5  # E11.21 matched, Z999.999 contributed 0.0
 
 
 def test_run_benchmark_bm25_and_expand_descendants(

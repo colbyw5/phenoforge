@@ -18,6 +18,7 @@ from phenoforge.engine.curated import load_curated_concept_set
 from phenoforge.engine.dense import DenseRetriever
 from phenoforge.engine.expansion import ancestor_chain_ids, expand_descendants
 from phenoforge.engine.hybrid import hybrid_search
+from phenoforge.engine.lookup import lookup_by_code
 from phenoforge.engine.retrieval import BM25Retriever
 from phenoforge.eval.metrics import (
     distance_weighted_score,
@@ -112,6 +113,14 @@ def score_cohort(
     coverage = set_coverage(coverage_scores, len(ground_truth_codes))
     penalty = over_inclusion_penalty(over_inclusion_scores, len(predicted_codes))
 
+    # A ground-truth code absent from the loaded vocabulary silently scores
+    # 0.0 in coverage_scores (ancestor_chain_ids returns [] for it, so
+    # tree_distance never finds a match) — flagged here rather than left
+    # indistinguishable from a genuine retrieval miss.
+    unresolvable_ground_truth = [
+        code for code in ground_truth_codes if lookup_by_code(con, code) is None
+    ]
+
     return CohortEvalResult(
         cohort_id=cohort_id,
         cohort_name=cohort_name,
@@ -121,7 +130,7 @@ def score_cohort(
         coverage=coverage,
         over_inclusion_penalty=penalty,
         hierarchical_score=hierarchical_score(coverage, penalty),
-        unresolvable_ground_truth=[],
+        unresolvable_ground_truth=unresolvable_ground_truth,
     )
 
 

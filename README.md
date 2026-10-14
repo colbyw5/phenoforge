@@ -278,31 +278,46 @@ What this does and doesn't establish:
   review to reject false positives, not toward silently missing codes. Anyone using the
   `generated` tier should expect to reject a meaningful fraction of what it returns, not
   rubber-stamp it.
-- **Decomposition now has a test case for every bundled cohort (23/23), and on average it
-  helps rather than hurts — but two real, distinct failure modes showed up along the way.**
+- **Decomposition now has a test case for every bundled cohort (23/23), measured at the
+  same search depth the real pipeline actually uses, and on average it helps rather than
+  hurts — but several real, distinct failure modes showed up along the way.**
   `scripts/eval_decomposition.py` (`phenoforge.eval.decomposition`) compares, per bundled
   cohort, "hybrid search using the cohort's own name directly" against "the real `decompose`
   step, then per-term resolution" — same ground truth, isolating what decomposition costs or
   saves (phrasing drawn from real ClinicalTrials.gov titles/inclusion criteria, not this
-  project's own wording). Mean gap across the original 8 diabetes/kidney cases was a near-wash
-  (**+0.019**, **+0.020** on rerun); across all 23, it's **-0.209** — decomposition usually
-  *wins*, because a single clean condition name (e.g. "atrial fibrillation") curated-matches
-  better than a cohort's own longer, more clinical display name (e.g. "Diabetes Mellitus Type
-  2 or history of diabetes") did as a search query. Individual cases still range widely:
+  project's own wording). An internal audit caught this eval defaulting to `k=10` (previously
+  `k=25`) — the earlier number measured a wider search than `agent/nodes.py` ever actually
+  uses, silently inflating how good decomposition looked. At the corrected depth: mean gap
+  across the original 8 diabetes/kidney cases was a near-wash (`+0.019`, `+0.020` on rerun at
+  the old depth); across all 23 at the corrected depth, it's **-0.165** — decomposition still
+  usually *wins*, because a single clean condition name (e.g. "atrial fibrillation")
+  curated-matches better than a cohort's own longer, more clinical display name (e.g.
+  "Diabetes Mellitus Type 2 or history of diabetes") did as a search query. Individual cases
+  still range widely, and the depth correction itself surfaced a new one:
     - **Near-duplicate cohorts cause `find_curated_definition` to deliberately refuse to
       guess.** The library has three "type 2 diabetes" cohorts (`40`, `288`, `503`); a generic
       decomposed term matching more than one of them falls through to ungrounded `generated`
       retrieval instead of picking one (by design — see the function's docstring), losing the
-      specificity a longer query carried. Worst case: `+0.637` (cohort `288`).
+      specificity a longer query carried. Worst case: `+0.404` (cohort `288`).
     - **A cohort's display name can be misleading relative to what it actually contains.**
       Cohort `602`, bundled under the name "Anxiety," resolves — via its real SNOMED-to-
       ICD-10-CM mapping — exclusively to *dementia-with-anxiety* codes (`F01.x4`/`F02.x4`/
       `F03.x4`), not primary anxiety disorders. The decomposed term `"generalized anxiety
-      disorder"` correctly retrieved the real F41.1 code and its relatives — retrieval worked
-      correctly — but scored `0.000` against ground truth that doesn't actually contain it.
-      This is a curated-library content-quality issue, not a decomposition or retrieval bug,
-      and it likely already depressed `602`'s contribution to the retrieval-only numbers above
-      before this was ever noticed.
+      disorder"` correctly retrieves the real F41.1 code and its relatives — retrieval works
+      correctly — but scores `0.000` against ground truth that doesn't actually contain it
+      (and at the corrected depth, so does the baseline — both score `0.000` against this
+      cohort now). A curated-library content-quality issue, not a decomposition or retrieval
+      bug, and it likely already depressed `602`'s contribution to the retrieval-only numbers
+      above before this was ever noticed.
+    - **Search depth itself changes which cases look solved.** Cohort `775` (inflammatory
+      bowel disease) scored a perfect `1.000` at the old, wider `k=25` depth but `0.000` at
+      the corrected `k=10` — the correct curated match simply isn't within the top 10
+      candidates for this term, only the top 25. Same structural issue as the `candidate_k`
+      fix to `hybrid_search` (`engine/hybrid.py`) found earlier: a result that looks solved
+      can depend entirely on a search-depth parameter nobody was explicitly reasoning about.
+  (Checked separately: none of the 23 bundled cohorts currently have a ground-truth code
+  missing from the loaded vocabulary — `unresolvable_ground_truth` exists for exactly this
+  case but had never actually been populated until now; see `eval/harness.py`.)
 - **Curated-tier coverage is still narrow by construction.** 23 cohorts out of the library's
   ~1,100 are bundled; any population description outside them falls through entirely to the
   unverified `generated` tier. Separately, SNOMED-to-ICD-10-CM resolution deliberately drops
