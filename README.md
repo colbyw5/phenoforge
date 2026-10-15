@@ -257,13 +257,23 @@ numbers on that set:
 | `bm25` | 0.759 | 0.441 | 0.589 |
 | `expand_descendants` | 0.635 | 0.122 | 0.667 |
 | `dense` | 0.828 | 0.541 | 0.577 |
-| `hybrid` (0.5/0.5) | 0.873 | 0.480 | 0.634 |
+| `hybrid` (0.5/0.5) | 0.873 | 0.436 | 0.654 |
 
 (Earlier, measured against only the original 8 diabetes/kidney cohorts: `bm25` 0.535,
 `expand_descendants` 0.697, `dense` 0.586, `hybrid` 0.692 hierarchical. Every method's
-hierarchical score moved when the set broadened — `hybrid` down from 0.692 to 0.634,
-`expand_descendants` down from 0.697 to 0.667 — concrete evidence that the original 8-cohort
-numbers were narrower than they looked, not a general ICD-10-CM retrieval benchmark.)
+hierarchical score moved when the set broadened — `hybrid` down from 0.692 to 0.634 (since
+corrected to 0.654, see below), `expand_descendants` down from 0.697 to 0.667 — concrete
+evidence that the original 8-cohort numbers were narrower than they looked, not a general
+ICD-10-CM retrieval benchmark.)
+
+`hybrid`'s own numbers above reflect a later fix: `hybrid_search`'s candidate pool (how many
+results each of BM25/dense considers *before* RRF fusion) used to default to `k` itself — the
+same number controlling how many fused results come back — so a concept ranked just outside
+`k` in one sub-retriever was invisible to fusion even when it would have won easily once
+pooled. Found via cohort `775` (below); fixed by decoupling the default (`candidate_k` now
+defaults to `5 * k`, still overridable). Measured before/after on this same benchmark: coverage
+unchanged (`0.873`), over-inclusion down `0.480` → `0.436`, hierarchical score up `0.634` →
+`0.654` — a real, measured improvement, not just a plausible-sounding default.
 
 What this does and doesn't establish:
 
@@ -289,16 +299,21 @@ What this does and doesn't establish:
   `k=25`) — the earlier number measured a wider search than `agent/nodes.py` ever actually
   uses, silently inflating how good decomposition looked. At the corrected depth: mean gap
   across the original 8 diabetes/kidney cases was a near-wash (`+0.019`, `+0.020` on rerun at
-  the old depth); across all 23 at the corrected depth, it's **-0.165** — decomposition still
-  usually *wins*, because a single clean condition name (e.g. "atrial fibrillation")
-  curated-matches better than a cohort's own longer, more clinical display name (e.g.
-  "Diabetes Mellitus Type 2 or history of diabetes") did as a search query. Individual cases
-  still range widely, and the depth correction itself surfaced a new one:
+  the old depth); across all 23 at the corrected depth, it's **-0.125 to -0.165** across reruns
+  — decomposition still usually *wins*, because a single clean condition name (e.g. "atrial
+  fibrillation") curated-matches better than a cohort's own longer, more clinical display name
+  (e.g. "Diabetes Mellitus Type 2 or history of diabetes") did as a search query. (The mean gap
+  itself isn't perfectly reproducible run-to-run: `decompose_fn` is a real, non-deterministic
+  Claude call, so a handful of individual cases' seed terms — and therefore scores — shift
+  between reruns even with no code change at all; the *themes* below hold across reruns, the
+  exact per-case numbers don't.) Individual cases still range widely, and the depth correction
+  itself surfaced a new one:
     - **Near-duplicate cohorts cause `find_curated_definition` to deliberately refuse to
       guess.** The library has three "type 2 diabetes" cohorts (`40`, `288`, `503`); a generic
       decomposed term matching more than one of them falls through to ungrounded `generated`
       retrieval instead of picking one (by design — see the function's docstring), losing the
-      specificity a longer query carried. Worst case: `+0.404` (cohort `288`).
+      specificity a longer query carried. Worst case seen: `+0.277` to `+0.404` across reruns
+      (cohort `288`).
     - **A cohort's display name can be misleading relative to what it actually contains.**
       Cohort `602`, bundled under the name "Anxiety," resolves — via its real SNOMED-to-
       ICD-10-CM mapping — exclusively to *dementia-with-anxiety* codes (`F01.x4`/`F02.x4`/
@@ -309,12 +324,21 @@ What this does and doesn't establish:
       cohort now). A curated-library content-quality issue, not a decomposition or retrieval
       bug, and it likely already depressed `602`'s contribution to the retrieval-only numbers
       above before this was ever noticed.
-    - **Search depth itself changes which cases look solved.** Cohort `775` (inflammatory
-      bowel disease) scored a perfect `1.000` at the old, wider `k=25` depth but `0.000` at
-      the corrected `k=10` — the correct curated match simply isn't within the top 10
-      candidates for this term, only the top 25. Same structural issue as the `candidate_k`
-      fix to `hybrid_search` (`engine/hybrid.py`) found earlier: a result that looks solved
-      can depend entirely on a search-depth parameter nobody was explicitly reasoning about.
+    - **Search depth itself changes which cases look solved — and widening the candidate pool
+      narrows this but doesn't close it.** Cohort `775` (inflammatory bowel disease) scored a
+      perfect `1.000` at the old, wider `k=25` depth but `0.000` at the corrected `k=10`.
+      Investigated directly: the seed term "inflammatory bowel disease" has *zero* lexical
+      overlap with any ICD-10-CM concept name at all (the vocabulary only names these codes
+      "Crohn's disease" / "ulcerative colitis") — BM25 contributes nothing, and dense
+      retrieval alone ranks the correct code (`K50.9`) only 5th of 50 candidates, short of
+      cracking the fused top 10 even after `hybrid_search`'s `candidate_k` default was widened
+      from `k` to `5 * k` (above). Widening the pool measurably helped the *baseline* query for
+      this cohort (`0.177` → `0.402`, since the full cohort name has more lexical signal than
+      the bare term) but the decomposed path stays at `0.000` — a genuine vocabulary/
+      terminology-coverage gap (umbrella clinical term vs. disease-specific vocabulary naming),
+      not a bug, and not something a pooling default alone can fix. Left as a documented
+      limitation rather than pursued further (e.g. query synonym expansion), since that's new
+      scope with its own failure modes, not justified by one cohort.
   (Checked separately: none of the 23 bundled cohorts currently have a ground-truth code
   missing from the loaded vocabulary — `unresolvable_ground_truth` exists for exactly this
   case but had never actually been populated until now; see `eval/harness.py`.)

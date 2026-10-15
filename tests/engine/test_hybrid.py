@@ -122,28 +122,31 @@ class _StubRetriever:
         return self._items[:k], None
 
 
-def test_hybrid_search_default_candidate_k_couples_pool_to_output() -> None:
-    """Undocumented-until-now original behavior, kept as the default for
-    backward compatibility: with candidate_k omitted, both sub-retrievers
-    are searched exactly k-deep — the same k controls both "how many
-    results come back" and "how deep each retriever searches"."""
-    bm25 = _StubRetriever([_concept(i, str(i), "bm25:q") for i in range(20)], "bm25")
-    dense = _StubRetriever([_concept(i, str(i), "dense:q") for i in range(20)], "dense")
+def test_hybrid_search_default_candidate_k_widens_pool_past_output_size() -> None:
+    """With candidate_k omitted, each sub-retriever is searched 5x deeper
+    than the final output size — a concept ranked outside k in one
+    retriever still gets pooled for RRF fusion instead of being invisible
+    to it (found via cohort 775: a seed term with zero BM25 lexical
+    overlap left its correct dense-ranked-5 match out of a k=10 pool
+    entirely under the old coupled default)."""
+    bm25 = _StubRetriever([_concept(i, str(i), "bm25:q") for i in range(40)], "bm25")
+    dense = _StubRetriever([_concept(i, str(i), "dense:q") for i in range(40)], "dense")
 
     hybrid_search(bm25, dense, "q", k=7)  # type: ignore[arg-type]
 
-    assert bm25.calls == [7]
-    assert dense.calls == [7]
+    assert bm25.calls == [35]
+    assert dense.calls == [35]
 
 
 def test_hybrid_search_explicit_candidate_k_decouples_pool_from_output() -> None:
     """Real case this was found from: the same concept's fused rank shifted
     depending on k alone, because widening k also silently widened the
     candidate pool. Concept 50 ranks only #15 in bm25 but #0 in dense — at
-    a shallow k=5 pool it never enters bm25's considered set at all, so it
-    scores on dense alone; once candidate_k is widened past 15, bm25's
-    contribution kicks in too and its *combined* score changes. Output
-    length still respects k, proving the two are now independent."""
+    an explicit, shallow candidate_k=5 pool it never enters bm25's
+    considered set at all, so it scores on dense alone; once candidate_k is
+    widened past 15, bm25's contribution kicks in too and its *combined*
+    score changes. Output length still respects k, proving the two are now
+    independent."""
     bm25_items = [_concept(i, str(i), "bm25:q") for i in range(15)] + [_concept(50, "50", "bm25:q")]
     dense_items = [_concept(50, "50", "dense:q")] + [
         _concept(i, str(i), "dense:q") for i in range(15)
@@ -151,7 +154,7 @@ def test_hybrid_search_explicit_candidate_k_decouples_pool_from_output() -> None
     bm25 = _StubRetriever(bm25_items, "bm25")
     dense = _StubRetriever(dense_items, "dense")
 
-    shallow, _ = hybrid_search(bm25, dense, "q", k=5)  # type: ignore[arg-type]
+    shallow, _ = hybrid_search(bm25, dense, "q", k=5, candidate_k=5)  # type: ignore[arg-type]
     assert bm25.calls == [5] and dense.calls == [5]
     shallow_score_source = next(c for c in shallow if c.concept_id == 50).source
     assert shallow_score_source == "dense:q"  # bm25 never saw it at this depth

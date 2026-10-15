@@ -15,6 +15,7 @@ from phenoforge.engine.models import ConceptWithProvenance, UnmappableTerm
 from phenoforge.engine.retrieval import BM25Retriever
 
 _DEFAULT_RRF_K = 60
+_DEFAULT_CANDIDATE_POOL_MULTIPLIER = 5
 
 
 def reciprocal_rank_fusion(
@@ -100,22 +101,29 @@ def hybrid_search(
         truth before changing this default.
     :param candidate_k: How many results each sub-retriever searches
         *before* fusion, independent of ``k`` (how many fused results come
-        back). Defaults to ``k`` itself — the original, coupled behavior,
-        a strict no-op for existing callers. Found and fixed via a real
-        case: with the coupled behavior, the same concept's fused rank
-        changed depending on ``k`` alone (e.g. #10 at ``k=10`` vs. #14 at
-        ``k=25``), because widening ``k`` silently also widened the
-        candidate pool competing for every rank, not just how many results
-        were returned. Pass an explicit, fixed ``candidate_k`` whenever
+        back). Defaults to ``5 * k``: a concept that one sub-retriever
+        ranks well outside ``k`` (e.g. dense rank 5 of 50 for a seed term
+        with zero BM25 lexical overlap) still gets a chance to compete in
+        RRF fusion rather than being invisible to it, which silently
+        happened under the old default of ``k`` itself (found via cohort
+        ``775`` — "inflammatory bowel disease" has no matching ICD-10-CM
+        concept name at all, so BM25 contributes nothing, and the correct
+        code's decent-but-not-top-``k`` dense rank was never pooled).
+        Widening the pool only ever adds candidates for fusion to rank
+        from; it never changes how many results come back (still ``k``)
+        or demotes a result that was already going to win, so this is a
+        pure ranking-quality improvement, not a behavior change any caller
+        needs to opt into. Pass an explicit, fixed ``candidate_k`` whenever
         comparing a concept's rank across calls with different ``k``
         (e.g. :func:`~phenoforge.engine.explain.explain_inclusion`'s
-        evidence) to keep that comparison meaningful.
+        evidence) to keep that comparison meaningful — or when ``k`` is
+        already large and ``5 * k`` would be wastefully deep.
     :returns: A tuple of (fused, deduplicated results ordered by combined
         relevance; an :class:`~phenoforge.engine.models.UnmappableTerm` if
         nothing matched, else ``None``).
     :rtype: tuple[list[ConceptWithProvenance], UnmappableTerm | None]
     """
-    pool = candidate_k if candidate_k is not None else k
+    pool = candidate_k if candidate_k is not None else k * _DEFAULT_CANDIDATE_POOL_MULTIPLIER
     bm25_results, bm25_unmappable = bm25.search(query, k=pool)
     if dense is not None:
         dense_results, _ = dense.search(query, k=pool)

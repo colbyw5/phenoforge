@@ -97,11 +97,11 @@ def explain_inclusion(
     :param fanout_threshold: Passed through to curated resolution.
     :param k: How deep to search for ``concept_code`` on the curated and
         generated paths — passed to :func:`~phenoforge.engine.hybrid.hybrid_search`
-        as both its ``k`` and ``candidate_k`` (this function never
-        truncates a candidate list for display, it only reports one
-        code's presence/rank, so there's no separate "how many to return"
-        concern the way there is for ``hybrid_search``'s own callers — see
-        its docstring). The rank reported in ``evidence`` is the code's
+        as its ``k`` (final result count); ``candidate_k`` is left at
+        ``hybrid_search``'s own default (``5 * k``) rather than pinned to
+        ``k`` here, so this function's reported rank benefits from the
+        same widened fusion pool as every other caller. The rank reported
+        in ``evidence`` is the code's
         position within this many candidates; pass a larger ``k`` to find
         a code that didn't show up at a shallower search depth, and don't
         compare ranks from calls with different ``k`` directly, since
