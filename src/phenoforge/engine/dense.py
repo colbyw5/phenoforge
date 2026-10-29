@@ -26,6 +26,9 @@ from phenoforge.engine.models import ConceptWithProvenance, ProvenanceTier, Unma
 _ICD10CM = "ICD10CM"
 _TABLE_NAME = "concepts"
 _BIOLORD_MODEL = "FremyCompany/BioLORD-2023"
+_SAPBERT_MODEL = "cambridgeltl/SapBERT-from-PubMedBERT-fulltext"
+_MEDCPT_QUERY_MODEL = "ncbi/MedCPT-Query-Encoder"
+_MEDCPT_ARTICLE_MODEL = "ncbi/MedCPT-Article-Encoder"
 
 EmbedFn = Callable[[list[str]], list[list[float]]]
 
@@ -76,6 +79,86 @@ def default_embedder() -> EmbedFn:
         return vectors
 
     return embed
+
+
+def _cls_pooled_embedder(model_name: str, max_length: int = 64) -> EmbedFn:
+    """Build an ``EmbedFn`` using a raw ``transformers`` checkpoint's [CLS] embedding.
+
+    Both SapBERT and MedCPT ship as plain ``transformers`` checkpoints (no
+    ``sentence-transformers`` ``modules.json``), and each model card's own
+    reference usage takes the last hidden state's [CLS] token (index 0) as
+    the embedding, not mean pooling — ``sentence-transformers``'s
+    auto-wrapping for a bare checkpoint defaults to mean pooling, which
+    would silently not match either model's documented usage. Loading via
+    plain ``transformers`` instead makes the pooling choice explicit and
+    correct for both.
+
+    :param model_name: HuggingFace repo id of the checkpoint.
+    :param max_length: Token truncation length. ``64`` matches the shorter
+        of the two models' own documented defaults (MedCPT's query
+        encoder) — these inputs are concept names and short query terms,
+        never full articles, so truncation in practice should rarely bind.
+    :returns: A function embedding a batch of texts into (unnormalized)
+        [CLS] vectors — callers normalize separately, same as every other
+        embedder in this module.
+    :rtype: EmbedFn
+    :raises ImportError: If ``transformers``/``torch`` is not installed.
+    """
+    import torch
+    from transformers import AutoModel, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(model_name)
+    model.eval()
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        encoded = tokenizer(
+            texts, truncation=True, padding=True, max_length=max_length, return_tensors="pt"
+        )
+        with torch.no_grad():
+            cls_vectors = model(**encoded).last_hidden_state[:, 0, :]
+        result: list[list[float]] = cls_vectors.tolist()
+        return result
+
+    return embed
+
+
+def sapbert_embedder() -> EmbedFn:
+    """Build an embedding function backed by SapBERT-from-PubMedBERT-fulltext.
+
+    Benchmarking alternative to :func:`default_embedder` (BioLORD-2023) —
+    see ``scripts/compare_encoders.py``. Symmetric, like BioLORD: the same
+    function embeds both concept names (indexing) and query text.
+
+    :returns: A function embedding a batch of texts into [CLS] vectors (see
+        :data:`EmbedFn`). Callers that feed this into :class:`DenseRetriever`
+        get L2 normalization for free; raw output here is unnormalized.
+    :rtype: EmbedFn
+    :raises ImportError: If ``transformers``/``torch`` is not installed.
+    """
+    return _cls_pooled_embedder(_SAPBERT_MODEL, max_length=25)
+
+
+def medcpt_embedders() -> tuple[EmbedFn, EmbedFn]:
+    """Build MedCPT's asymmetric article/query embedding functions.
+
+    Unlike BioLORD/SapBERT, MedCPT ships as two separate encoders — an
+    Article Encoder (meant for the text being indexed) and a Query Encoder
+    (meant for short search queries) — trained specifically for
+    query-to-article retrieval, not as one symmetric encoder. Collapsing
+    both into a single function (e.g. using the article encoder for
+    queries too) would misrepresent how the model is meant to be used and
+    bias the comparison against it; see ``scripts/compare_encoders.py``,
+    which passes the article function for indexing and the query function
+    for search via :class:`DenseRetriever`'s ``query_embed_fn``.
+
+    :returns: ``(article_embed_fn, query_embed_fn)``.
+    :rtype: tuple[EmbedFn, EmbedFn]
+    :raises ImportError: If ``transformers``/``torch`` is not installed.
+    """
+    article_fn = _cls_pooled_embedder(_MEDCPT_ARTICLE_MODEL, max_length=512)
+    query_fn = _cls_pooled_embedder(_MEDCPT_QUERY_MODEL, max_length=64)
+    return article_fn, query_fn
 
 
 def _embed_concept_rows(
@@ -135,20 +218,28 @@ class DenseRetriever:
         con: duckdb.DuckDBPyConnection,
         embed_fn: EmbedFn | None = None,
         index_path: Path | None = None,
+        query_embed_fn: EmbedFn | None = None,
     ) -> None:
         """Open or build the semantic index.
 
         :param con: Open connection to ``vocab.duckdb``.
-        :param embed_fn: Embedding function. Defaults to
-            :func:`default_embedder` (real BioLORD-2023) if not given —
-            always needed, even when opening a prebuilt table, to embed
-            query text at search time.
+        :param embed_fn: Embedding function used to embed concept names at
+            index-build time (and, absent ``query_embed_fn``, at query
+            time too). Defaults to :func:`default_embedder` (real
+            BioLORD-2023) if not given.
         :param index_path: Path to a persisted LanceDB directory built by
             ``scripts/build_index.py``. If missing, not given, or present
             but unreadable (interrupted or corrupt ``build_index.py`` run),
             an ephemeral in-memory index is built instead.
+        :param query_embed_fn: Separate embedding function for query text
+            at search time, for an asymmetric encoder pair like MedCPT's
+            article/query encoders (see :func:`medcpt_embedders`).
+            Defaults to ``embed_fn`` itself — correct for every symmetric
+            embedder (BioLORD, SapBERT), where the same function embeds
+            both concept names and queries.
         """
         self._embed_fn = embed_fn or default_embedder()
+        self._query_embed_fn = query_embed_fn or self._embed_fn
         self._table: Any = None
 
         if index_path is not None and index_path.exists():
@@ -184,7 +275,7 @@ class DenseRetriever:
             scored above ``min_score``, else ``None``).
         :rtype: tuple[list[ConceptWithProvenance], UnmappableTerm | None]
         """
-        query_vector = _normalize(self._embed_fn([query])[0])
+        query_vector = _normalize(self._query_embed_fn([query])[0])
         rows = self._table.search(query_vector).limit(k).to_list()
 
         results = []
